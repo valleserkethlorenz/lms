@@ -89,6 +89,45 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->close();
         $conn->close();
     }
+    if (isset($_POST['schedule'])) {
+
+        $sql = "INSERT INTO tbl_schedule 
+            (league_id, team_a, team_b, date, time, status)  
+            VALUES (?, ?, ?, ?, ?, ?)";
+
+        $stmt = $conn->prepare($sql);
+
+        if (!$stmt) {
+            die("Prepare failed: " . $conn->error);
+        }
+
+        $status = 'Upcoming';
+
+        $stmt->bind_param(
+            "iiisss",
+            $_POST['league_id'],
+            $_POST['team_a'],
+            $_POST['team_b'],
+            $_POST['date'],
+            $_POST['time'],
+            $status
+        );
+
+        if ($stmt->execute()) {
+            echo json_encode([
+                "status" => 201,
+                "msg" => "Schedule created successfully"
+            ]);
+        } else {
+            echo json_encode([
+                "status" => 500,
+                "msg" => $stmt->error
+            ]);
+        }
+
+        $stmt->close();
+        $conn->close();
+    }
     if (isset($_POST['approved'])) {
         $team_id = $_POST["team_id"];
         $sql = "UPDATE `tbl_team` SET `status`='Approved' WHERE `id` ='$team_id'";
