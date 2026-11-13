@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "note": "Keyword groups used by quality/ocr.py. Each group is a list of alternatives; a group is satisfied when any alternative appears in the recognised text. Groups are matched case-insensitively after stripping punctuation. Keep each group short so old, dot-matrix or stylised certificates still match.",
+  "types": {
+    "birth certificate": {
+      "label": "Birth Certificate",
+      "required": [
+        ["birth"],
+        ["certificate", "cert", "registry", "psa", "ns0", "civil registrar"]
+      ]
+    },
+    "medical": {
+      "label": "Medical",
+      "required": [
+        ["medical", "clinic", "physician", "doctor", "hospital"],
+        ["fit", "certificate", "clearance", "examination", "laboratory"]
+      ]
+    },
+    "valid id": {
+      "label": "Valid ID",
+      "required": [
+        ["republic", "philippines", "id", "identification", "passport", "driver", "umid", "philsys", "prc", "student", "employee"],
+        ["birth", "date", "name", "number", "address", "signature", "valid"]
+      ]
+    }
+  },
+  "default": {
+    "label": "",
+    "required": []
+  }
+}

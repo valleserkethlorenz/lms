@@ -1,6 +1,6 @@
 # composer/pcre PHPStan extensions
 #
-# These can be reused by third party packages by including 'assets/composer/pcre/extension.neon'
+# These can be reused by third party packages by including 'vendor/composer/pcre/extension.neon'
 # in your phpstan config
 
 services:

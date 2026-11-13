@@ -1,33 +1,39 @@
-<script src="../../vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="../../vendor/jquery/jquery.min.js"></script>
-<script src="../../vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
-<script src="../../vendor/jquery/jquery-3.3.1.min.js"></script>
-<script src="../../vendor/jquery-easing/jquery.easing.min.js"></script>
-<script src="../../vendor/js/sb-admin-2.min.js"></script>
-<script src="../../vendor/js/select2.min.js"></script>
-<!-- database tables-->
-<script src="../../vendor/datatables/js/jquery.dataTables.min.js"></script>
-<script src=" ../../vendor/datatables/js/dataTables.bootstrap4.min.js"></script>
-<script src="../../vendor/datatables/js/dataTables.buttons.min.js"></script>
-<script src="../../vendor/datatables/js/buttons.bootstrap4.min.js"></script>
-<script src="../../vendor/datatables/js/data-table.js"></script>
-<script src="../../vendor/datatables/js/jszip.min.js"></script>
-<script src="../../vendor/datatables/js/pdfmake.min.js"></script>
-<script src="../../vendor/datatables/js/vfs_fonts.js"></script>
-<script src="../../vendor/datatables/js/buttons.html5.min.js"></script>
-<script src="../../vendor/datatables/js/buttons.print.min.js"></script>
-<script src="../../vendor/datatables/js/buttons.colVis.min.js"></script>
-<script src="../../vendor/datatables/js/dataTables.rowGroup.min.js"></script>
-<script src="../../vendor/datatables/js/dataTables.select.min.js"></script>
-<script src="../../vendor/datatables/js/dataTables.fixedHeader.min.js"></script>
-<script src="../../vendor/datatables/js/buttons.print.min.js"></script>
-<script src="../../vendor/datatables/js/buttons.colVis.min.js"></script>
-<script src="../../vendor/datatables/js/dataTables.rowGroup.min.js"></script>
-<script src="../../vendor/datatables/js/dataTables.select.min.js"></script>
-<script src="../../vendor/datatables/js/dataTables.fixedHeader.min.js"></script>
-<script src="../../vendor/sweetalert/sweetalert2@11.js"></script>
-<script src="../../vendor/js/calendar.js"></script>
-<script src="../../vendor/js/canvasjs.min.js"></script>
+<!-- jQuery -->
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<!-- Bootstrap Bundle JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- jQuery Easing -->
+<script src="https://cdn.jsdelivr.net/npm/jquery-easing@0.0.1/jquery.easing.min.js"></script>
+<!-- SB Admin 2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/startbootstrap-sb-admin-2@4.1.4/js/sb-admin-2.min.js"></script>
+<!-- Select2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<!-- DataTables JS -->
+<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap4.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.colVis.min.js"></script>
+<script src="https://cdn.datatables.net/select/1.7.0/js/dataTables.select.min.js"></script>
+<script src="https://cdn.datatables.net/fixedheader/3.4.1/js/dataTables.fixedHeader.min.js"></script>
+<script src="https://cdn.datatables.net/rowgroup/1.4.1/js/dataTables.rowGroup.min.js"></script>
+<!-- JSZip for DataTables export -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<!-- pdfmake for DataTables export -->
+<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.7/build/pdfmake.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.7/build/vfs_fonts.js"></script>
+<!-- SweetAlert2 -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- LMS floating toast notifications (shared component) -->
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/js/lms-toast.js"></script>
+<!-- LMS modal dialogs (shared component) -->
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/js/lms-dialog.js"></script>
+<!-- Alertify JS -->
+<script src="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/alertify.min.js"></script>
+<!-- CanvasJS for charts -->
+<script src="https://cdn.canvasjs.com/canvasjs.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         document.querySelectorAll("input").forEach(function(input) {
@@ -36,56 +42,37 @@
     });
 </script>
 <script>
-    $(document).on('submit', '#logoutForm', function(e) {
+    $(document).on('submit', '.logoutForm', function(e) {
         e.preventDefault();
 
-        Swal.fire({
-            text: "Are you sure you want to logout?",
-            icon: "question",
-            showCancelButton: true,
-            confirmButtonColor: "#0eb018",
-            cancelButtonColor: "rgb(92, 92, 92)",
-            confirmButtonText: "Yes, logout!"
-        }).then((result) => {
-
-            if (!result.isConfirmed) return;
-
+        LmsDialog.confirm({
+            title: 'Log out of your account?',
+            text: 'You will need to sign in again to continue managing your leagues.',
+            confirmButtonText: 'Yes, log out',
+            cancelButtonText: 'Stay signed in'
+        }).then((confirmed) => {
+            if (!confirmed) return;
             $.ajax({
                 url: "action/logout.php",
                 type: "POST",
                 data: {
-                    logout: true
+                    logout: true,
+                    csrf_token: <?= json_encode(csrfToken()) ?>
                 },
-                dataType: "json", // ✅ IMPORTANT
+                dataType: "json",
                 success: function(res) {
-
-                    console.log(res); // 👈 DEBUG
-
                     if (res.status === 201) {
-                        let timerInterval;
-
-                        Swal.fire({
+                        Toast.fire({
                             icon: 'success',
-                            title: 'Logging out',
-                            html: 'Redirecting in <b></b> milliseconds.',
-                            timer: 1500,
-                            timerProgressBar: true,
-                            didOpen: () => {
-                                const timer = Swal.getPopup().querySelector('b');
-                                const interval = setInterval(() => {
-                                    timer.textContent = Swal.getTimerLeft();
-                                }, 100);
-                            },
-                            willClose: () => {
-                                window.location.href = "../../index.php";
-                            }
+                            title: 'Logged out',
+                            timer: 1200
                         }).then(() => {
                             window.location.href = "../../index.php";
                         });
                     } else {
-                        Swal.fire({
+                        Toast.fire({
                             icon: 'error',
-                            text: res.msg
+                            title: res.msg || 'Please try again.'
                         });
                     }
                 },
@@ -109,10 +96,12 @@
         day % 10 === 3 && day !== 13 ? 'rd' : 'th';
 
     // Set the content
-    // document.getElementById('day').textContent = day;
-    document.getElementById('suffix').textContent = suffix;
-    document.getElementById('month').textContent = month;
-    document.getElementById('year').textContent = year;
+    const suffixEl = document.getElementById('suffix');
+    const monthEl = document.getElementById('month');
+    const yearEl = document.getElementById('year');
+    if (suffixEl) suffixEl.textContent = suffix;
+    if (monthEl) monthEl.textContent = month;
+    if (yearEl) yearEl.textContent = year;
 </script>
 <script>
     // Function to get the current date and time in GMT+8
@@ -142,30 +131,19 @@
     }
 
     // Display the current date and time in GMT+8
-    document.getElementById("datetime").innerText = getCurrentDateTimeGMT8();
+    const dateTimeEl = document.getElementById("datetime");
+    if (dateTimeEl) {
+        dateTimeEl.innerText = getCurrentDateTimeGMT8();
+    }
 
     // Update the date and time every second
     setInterval(() => {
-        document.getElementById("datetime").innerText = getCurrentDateTimeGMT8();
+        if (dateTimeEl) {
+            dateTimeEl.innerText = getCurrentDateTimeGMT8();
+        }
     }, 1000);
 </script>
 <script>
-    const Toast = Swal.mixin({
-        toast: true,
-        position: "top-end",
-        iconColor: 'white',
-        showConfirmButton: false,
-        customClass: {
-            popup: 'colored-toast',
-        },
-        timer: 1500,
-        timerProgressBar: true,
-        didOpen: (toast) => {
-            toast.onmouseenter = Swal.stopTimer;
-            toast.onmouseleave = Swal.resumeTimer;
-        }
-    });
-
     function togglePasswordVisibility1() {
         var passwordInput1 = document.getElementById("pass");
         var showPasswordCheckbox1 = document.getElementById("password");
@@ -188,3 +166,4 @@
         }
     }
 </script>
+<?php include __DIR__ . '/../../../includes/notificationPopover.php'; ?>

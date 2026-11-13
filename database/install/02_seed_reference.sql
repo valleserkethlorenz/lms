@@ -1,0 +1,39 @@
+-- ============================================================================
+-- LMS  -  Step 02: reference / seed data (tbl_utility only)
+--
+-- Sports (roster defaults + volleyball scoring), divisions (age ranges),
+-- venues, document types (player scope) and categories (Male/Female/Mixed).
+-- The legacy 'league_format' rows are intentionally excluded (format model was
+-- removed in migration 037).
+--
+-- Import AFTER 01_schema.sql. Safe to re-run: INSERT IGNORE skips rows whose ids exist.
+-- Extra sports / divisions / document types can be added later through
+-- Admin -> Utilities instead of SQL.
+-- ============================================================================
+
+USE `lms`;
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+LOCK TABLES `tbl_utility` WRITE;
+/*!40000 ALTER TABLE `tbl_utility` DISABLE KEYS */;
+INSERT IGNORE INTO `tbl_utility` (`id`, `category`, `name`, `is_active`, `created_by`, `created_at`, `min_age`, `max_age`, `default_min_players`, `default_max_players`, `applies_to`, `result_unit`, `scoring_mode`, `best_of`, `set_target`, `deciding_target`, `win_by`, `jersey_min`, `jersey_max`, `roster_regular`, `libero_min`, `libero_max`, `require_official`, `protest_window_minutes`, `allow_draw`) VALUES (8,'sport','Basketball',1,1,'2026-08-29 22:15:14',NULL,NULL,5,15,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(9,'sport','Takraw',1,1,'2026-08-29 22:19:16',NULL,NULL,3,3,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(10,'sport','Volleyball',1,1,'2026-08-29 22:19:49',NULL,NULL,12,14,NULL,'sets','set_line',3,25,15,2,1,99,12,1,2,1,30,0),(12,'sport','Soccer',1,1,'2026-08-29 22:20:28',NULL,NULL,11,22,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(13,'sport','Mobile Legends',1,1,'2026-08-29 22:20:47',NULL,NULL,5,6,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(14,'sport','Badminton',1,1,'2026-08-29 22:22:26',NULL,NULL,1,2,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(16,'division','Junior',1,1,'2026-08-30 20:17:42',9,12,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(17,'division','Under 18',1,1,'2026-08-30 20:19:00',13,17,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(18,'division','Open',1,1,'2026-08-30 20:19:21',16,50,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(19,'division','Under 21',1,1,'2026-08-30 20:19:57',13,20,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(21,'venue','Panabo City Multi-Purpose Tourism Cultural and Sports Center',1,1,'2026-08-30 20:27:00',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(22,'venue','Panabo Park',1,1,'2026-08-30 20:27:15',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(23,'document_type','Birth Certificate',1,1,'2026-08-30 20:27:42',NULL,NULL,NULL,NULL,'player',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(24,'document_type','Medical',1,1,'2026-08-30 20:27:56',NULL,NULL,NULL,NULL,'player',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(25,'document_type','Valid ID',1,1,'2026-08-30 20:28:07',NULL,NULL,NULL,NULL,'player',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(26,'category','Male',1,1,'2026-08-30 20:28:19',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(27,'category','Female',1,1,'2026-08-30 20:28:25',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(28,'category','Mixed',1,1,'2026-08-30 20:28:33',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(29,'sport','Pickleball',1,1,'2026-08-31 22:14:20',NULL,NULL,1,2,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL),(31,'sport','DOTA',1,1,'2026-09-01 11:51:33',NULL,NULL,5,6,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL);
+/*!40000 ALTER TABLE `tbl_utility` ENABLE KEYS */;
+UNLOCK TABLES;
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+

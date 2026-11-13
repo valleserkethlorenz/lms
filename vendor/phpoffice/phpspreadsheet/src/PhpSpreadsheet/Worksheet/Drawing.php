@@ -2,6 +2,7 @@
 
 namespace PhpOffice\PhpSpreadsheet\Worksheet;
 
+use Composer\Pcre\Preg;
 use PhpOffice\PhpSpreadsheet\Exception as PhpSpreadsheetException;
 use ZipArchive;
 
@@ -16,13 +17,17 @@ class Drawing extends BaseDrawing
 
     /**
      * Path.
+     *
+     * @var string
      */
-    private string $path;
+    private $path;
 
     /**
      * Whether or not we are dealing with a URL.
+     *
+     * @var bool
      */
-    private bool $isUrl;
+    private $isUrl;
 
     /**
      * Create a new Drawing.
@@ -39,8 +44,10 @@ class Drawing extends BaseDrawing
 
     /**
      * Get Filename.
+     *
+     * @return string
      */
-    public function getFilename(): string
+    public function getFilename()
     {
         return basename($this->path);
     }
@@ -55,8 +62,10 @@ class Drawing extends BaseDrawing
 
     /**
      * Get Extension.
+     *
+     * @return string
      */
-    public function getExtension(): string
+    public function getExtension()
     {
         $exploded = explode('.', basename($this->path));
 
@@ -65,8 +74,10 @@ class Drawing extends BaseDrawing
 
     /**
      * Get full filepath to store drawing in zip archive.
+     *
+     * @return string
      */
-    public function getMediaFilename(): string
+    public function getMediaFilename()
     {
         if (!array_key_exists($this->type, self::IMAGE_TYPES_CONVERTION_MAP)) {
             throw new PhpSpreadsheetException('Unsupported image type in comment background. Supported types: PNG, JPEG, BMP, GIF.');
@@ -77,8 +88,10 @@ class Drawing extends BaseDrawing
 
     /**
      * Get Path.
+     *
+     * @return string
      */
-    public function getPath(): string
+    public function getPath()
     {
         return $this->path;
     }
@@ -88,31 +101,52 @@ class Drawing extends BaseDrawing
      *
      * @param string $path File path
      * @param bool $verifyFile Verify file
-     * @param ?ZipArchive $zip Zip archive instance
+     * @param ZipArchive $zip Zip archive instance
+     * @param bool $allowExternal
+     * @param null|callable(string):bool $isWhitelisted
      *
      * @return $this
      */
-    public function setPath(string $path, bool $verifyFile = true, ?ZipArchive $zip = null): static
+    public function setPath($path, $verifyFile = true, $zip = null, $allowExternal = true, ?callable $isWhitelisted = null)
     {
         $this->isUrl = false;
-        if (preg_match('~^data:image/[a-z]+;base64,~', $path) === 1) {
+        if (Preg::isMatch('~^data:image/[a-z]+;base64,~', $path)) {
             $this->path = $path;
 
             return $this;
         }
 
         $this->path = '';
+        if ($zip instanceof ZipArchive) {
+            $zipPath = explode('#', $path)[1];
+            $locate = @$zip->locateName($zipPath);
+            if ($locate !== false) {
+                if ($this->isImage($path)) {
+                    $this->path = $path;
+                    $this->setSizesAndType($path);
+                }
+            }
         // Check if a URL has been passed. https://stackoverflow.com/a/2058596/1252979
-        if (filter_var($path, FILTER_VALIDATE_URL) || (preg_match('/^([\\w\\s\\x00-\\x1f]+):/u', $path) && !preg_match('/^([\\w]+):/u', $path))) {
-            if (!preg_match('/^(http|https|file|ftp|s3):/', $path)) {
+        } elseif (
+            filter_var($path, FILTER_VALIDATE_URL)
+            || Preg::isMatch('~^phar://~i', $path)
+            || (Preg::isMatch('/^([\w.\s\x00-\x1f]+):/', $path) && !Preg::isMatch('/^([\w.]+):/', $path))
+        ) {
+            if (!Preg::isMatch('/^(http|https|file|ftp|s3):/', $path)) {
                 throw new PhpSpreadsheetException('Invalid protocol for linked drawing');
+            }
+            if (!$allowExternal) {
+                return $this;
+            }
+            if ($isWhitelisted !== null && !$isWhitelisted($path)) {
+                return $this;
             }
             // Implicit that it is a URL, rather store info than running check above on value in other places.
             $this->isUrl = true;
             $ctx = null;
             // https://github.com/php/php-src/issues/16023
             // https://github.com/php/php-src/issues/17121
-            if (str_starts_with($path, 'https:') || str_starts_with($path, 'http:')) {
+            if (Preg::isMatch('/^https?:/', $path)) {
                 $ctxArray = [
                     'http' => [
                         'user_agent' => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -122,7 +156,7 @@ class Drawing extends BaseDrawing
                         ],
                     ],
                 ];
-                if (str_starts_with($path, 'https:')) {
+                if (Preg::isMatch('/^https:/', $path)) {
                     $ctxArray['ssl'] = ['crypto_method' => STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT];
                 }
                 $ctx = stream_context_create($ctxArray);
@@ -139,15 +173,6 @@ class Drawing extends BaseDrawing
                         }
                         unlink($filePath);
                     }
-                }
-            }
-        } elseif ($zip instanceof ZipArchive) {
-            $zipPath = explode('#', $path)[1];
-            $locate = @$zip->locateName($zipPath);
-            if ($locate !== false) {
-                if ($this->isImage($path)) {
-                    $this->path = $path;
-                    $this->setSizesAndType($path);
                 }
             }
         } else {
@@ -174,7 +199,7 @@ class Drawing extends BaseDrawing
     {
         $mime = (string) @mime_content_type($path);
         $retVal = false;
-        if (str_starts_with($mime, 'image/')) {
+        if (strpos($mime, 'image/') === 0) {
             $retVal = true;
         } elseif ($mime === 'application/octet-stream') {
             $extension = pathinfo($path, PATHINFO_EXTENSION);
@@ -211,12 +236,12 @@ class Drawing extends BaseDrawing
      *
      * @return string Hash code
      */
-    public function getHashCode(): string
+    public function getHashCode()
     {
         return md5(
-            $this->path
-            . parent::getHashCode()
-            . __CLASS__
+            $this->path .
+            parent::getHashCode() .
+            __CLASS__
         );
     }
 

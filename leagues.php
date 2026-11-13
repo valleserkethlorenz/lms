@@ -1,137 +1,347 @@
 <?php
 
 session_start();
-include 'config/dbconnect.php';
+require_once __DIR__ . '/config/dbconnect.php';
+require_once __DIR__ . '/config/leagueStatus.php';
+require_once __DIR__ . '/includes/storageService.php';
 
-
+if ((int)($_SESSION['lms_role'] ?? 0) === 2 && !empty($_SESSION['lms_id'])) {
+    $query = $_SERVER['QUERY_STRING'] ?? '';
+    header('Location: app/tr/browse_leagues.php'.($query !== '' ? '?'.$query : ''));
+    exit;
+}
 
 $time = strtotime("-10 year", time());
 $date = date("Y-m-d", $time);
-include 'includes/header.php';
-include 'config/dbconnect.php'; ?>
+$filters=['search'=>trim($_GET['search']??''),'sport'=>trim($_GET['sport']??''),'status'=>trim($_GET['status']??'')];
+if(!in_array($filters['status'],['','Upcoming','Open','Ongoing','Completed'],true))$filters['status']='';
+$sportOptions=[];$sportResult=$conn->query("SELECT DISTINCT sport FROM tbl_league WHERE publication_status='Published' AND (is_archived=0 OR is_archived IS NULL) AND sport<>'' ORDER BY sport");if($sportResult)while($row=$sportResult->fetch_assoc())$sportOptions[]=$row['sport'];
+$where=["l.publication_status='Published'","(l.is_archived=0 OR l.is_archived IS NULL)"];$params=[];$types='';
+if($filters['search']!==''){$where[]='(l.league_name LIKE ? OR l.sport LIKE ?)';$searchTerm='%'.$filters['search'].'%';$params[]=$searchTerm;$params[]=$searchTerm;$types.='ss';}
+if($filters['sport']!==''){$where[]='l.sport=?';$params[]=$filters['sport'];$types.='s';}
+$leagueSql="SELECT l.*,(SELECT COUNT(*) FROM tbl_team t WHERE t.league_id=l.id AND LOWER(t.status)='approved') current_teams FROM tbl_league l WHERE ".implode(' AND ',$where).' ORDER BY l.start_date DESC';
+$leagueStmt=$conn->prepare($leagueSql);if($params)$leagueStmt->bind_param($types,...$params);$leagueStmt->execute();$leagueResult=$leagueStmt->get_result();$filteredLeagues=[];while($league=$leagueResult->fetch_assoc()){$league['live_status']=getLeagueStatus($league);if($filters['status']===''||$filters['status']===$league['live_status'])$filteredLeagues[]=$league;}$leagueStmt->close();
+include 'includes/header.php'; ?>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style rel="stylesheet">
     .cols {
         border-radius: 15px;
-        box-shadow: 1px 5px 5px 1px rgba(0, 0, 0, 0.2);
-        border: 1px solid #d9d9d9;
-        border-radius: 25px;
-        min-height: 700px;
+        box-shadow: 0 8px 24px rgba(16, 24, 40, .07);
+        border: 1px solid #e1e7ef;
+        border-radius: 20px;
+        min-height: 560px;
     }
 
     .cards {
         border-radius: 15px;
         box-shadow: 1px 5px 5px 1px rgba(0, 0, 0, 0.2);
     }
+    .cards {
+        border-radius: 12px;
+        overflow: hidden;
+        transition: transform 200ms ease, box-shadow 200ms ease;
+        border: 1px solid rgba(13,110,253,0.06);
+    }
+    .cards:hover {
+        transform: translateY(-6px);
+        box-shadow: 0 10px 20px rgba(13,110,253,0.08);
+    }
+    .cards img {
+        height: 140px;
+        width: 100%;
+        display: block;
+        object-fit: cover;
+    }
+    /* make cards use column layout so actions stick to bottom */
+    .cards {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+    .cards .card-body {
+        padding: 14px;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        flex: 1 1 auto;
+    }
+    .cards .card-header { padding: 0; }
+    /* status badge: white pill with primary colored text (matches header buttons) */
+    .league-badge-status {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        padding: 6px 10px;
+        font-weight: 700;
+        color: #fff;
+        border-radius: 18px;
+        font-size: 0.8rem;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+    }
+    .badge-slots {
+        background: rgba(255,193,7,0.95);
+        color: #111;
+        font-weight: 600;
+        border-radius: 12px;
+        padding: 4px 8px;
+        font-size: 0.75rem;
+    }
+    .cards .btn {
+        border-radius: 20px;
+        padding: 8px 18px;
+    }
+    .btn-light {
+        border: 1px solid #0d6efd;
+        color: #0d6efd;
+        background: #fff;
+    }
+    .btn-primary {
+        background: linear-gradient(90deg,#0d6efd,#0069f7);
+        border: none;
+    }
+
+    /* ensure action area stays at bottom */
+    .cards .card-body .text-center{ margin-top: auto; }
+
+    /* status color variants */
+    .status-pill.league-status-open { background: #28c76f; }
+    .status-pill.league-status-ongoing { background: #0069f7; }
+    .status-pill.league-status-upcoming { background: #6f42c1; }
+    .status-pill.league-status-ended { background: #6c757d; }
+
+    /* title truncation */
+    .card-title-compact {
+        font-weight:700;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .meta-row { font-size: 0.9rem; color: #444; display:block; }
+    .meta-line { display:flex; gap:8px; align-items:center; color:#6c757d; margin-bottom:6px }
+    .meta-line i { color:#6c757d }
+
+    .btn-view { border-radius:8px; padding:8px 10px; text-transform:uppercase; font-weight:600; font-size:0.85rem }
+
+    /* ===== Featured Card (matches index.php) ===== */
+    .featured-card {
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+        border: 1px solid #dfe6ef !important;
+        border-radius: 16px !important;
+        background: #fff;
+        box-shadow: 0 6px 18px rgba(16, 24, 40, .07) !important;
+        transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+        cursor: pointer;
+    }
+    .featured-card:hover {
+        transform: translateY(-5px);
+        border-color: #bfd0e7 !important;
+        box-shadow: 0 14px 30px rgba(16, 24, 40, .13) !important;
+    }
+    .featured-card-link {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        text-decoration: none;
+    }
+    .featured-card-link::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+    }
+
+    .featured-image {
+        position: relative;
+        height: 132px;
+        overflow: hidden;
+        background: #dfe8f2;
+    }
+    .featured-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform .35s;
+    }
+    .featured-card:hover .featured-image img { transform: scale(1.04); }
+
+    .status-pill {
+        position: absolute;
+        left: 10px;
+        top: 10px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(9, 23, 60, .88);
+        color: #fff;
+        font-size: .62rem;
+        font-weight: 700;
+        backdrop-filter: blur(6px);
+    }
+
+    .featured-body { padding: 15px 16px 17px; }
+
+    .featured-sport {
+        color: #2b69a4;
+        font-size: .68rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .8px;
+    }
+
+    .featured-title {
+        margin: 4px 0 10px;
+        color: #172033;
+        font-size: 1rem;
+        font-weight: 750;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .featured-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+        gap: 8px 10px;
+        color: #657186;
+        font-size: .7rem;
+    }
+    .featured-meta span { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .featured-meta i { flex: 0 0 auto; color: #2b69a4; }
+
+    /* Exactly 4 cards per row on desktop panels (auto-fill cannot be used here: it
+       counts columns from a track's definite max, which kept collapsing rows to 3). */
+    .league-card-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        align-content: start;
+        gap: 18px;
+        margin: 0 !important;
+        padding: 0 !important; /* the .cols wrapper already provides p-4 spacing */
+    }
+    .league-card-grid > [class*="col-"] {
+        width: 100%;
+        max-width: none;
+        padding: 0;
+    }
+
+    .compact-filter { position:sticky;top:105px;padding:0;border:1px solid #d8e1eb;border-radius:12px;background:#fff;overflow:hidden;box-shadow:0 4px 18px rgba(16,24,40,.05);transition:box-shadow .25s ease; }
+    .compact-filter:hover { box-shadow:0 6px 24px rgba(16,24,40,.09); }
+    .filter-panel-header { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;background:linear-gradient(135deg,#09173c 0%,#1a3a7c 100%);border-bottom:1px solid rgba(255,255,255,.12); }
+    .filter-panel-heading { display:flex;align-items:center;gap:10px;min-width:0; }
+    .filter-panel-icon { display:flex;align-items:center;justify-content:center;flex:0 0 36px;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.13);color:#fff;font-size:1rem; }
+    .filter-panel-title { margin:0;color:#fff;font-size:.9rem;font-weight:700;letter-spacing:.2px; }
+    .filter-panel-count { flex:0 0 auto;padding:4px 10px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font-size:.7rem;font-weight:700; }
+    .filter-panel-count.has-filters { border-color:rgba(255,193,7,.35);background:rgba(255,193,7,.25); }
+    .filter-panel-body { padding:16px; }
+    .filter-panel-field { margin-bottom:14px; }
+    .filter-panel-field:last-of-type { margin-bottom:0; }
+    .filter-panel-field label { display:flex;align-items:center;gap:6px;margin-bottom:6px;color:#4b5c72;font-size:.7rem;font-weight:600;letter-spacing:.55px;text-transform:uppercase; }
+    .filter-panel-field label i { color:#8896a7;font-size:.78rem; }
+    .filter-panel-field .input-group { overflow:hidden;border:1.5px solid #d8e1eb;border-radius:10px;background:#f8fafc;transition:border-color .2s,box-shadow .2s; }
+    .filter-panel-field .input-group:focus-within { border-color:#1a3a7c;background:#fff;box-shadow:0 0 0 3px rgba(26,58,124,.1); }
+    .filter-panel-field .input-group-text { display:flex;min-width:36px;justify-content:center;padding:0 10px;border:0;border-right:1.5px solid #e4eaf1;background:transparent;color:#8896a7;font-size:.82rem; }
+    .filter-panel-field .form-control,.filter-panel-field .form-select { min-height:38px;padding:8px 10px;border:0;background:transparent;color:#1e293b!important;font-size:.78rem;box-shadow:none!important; }
+    .filter-panel-field .form-select { cursor:pointer; }
+    .filter-panel-field .form-control::placeholder { color:#a0aec0; }
+    .league-result-count { color:#667085;font-size:.85rem; }
+    .cols:has(.league-empty) { display:flex;flex-direction:column; }
+    .league-card-grid:has(.league-empty) { flex:1;align-content:center; }
+    .league-card-grid > .col-12:has(.league-empty) { grid-column:1/-1; }
+    .league-empty { min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#667085; }
+    @media(max-width:1199.98px){.league-card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    @media(max-width:991.98px){.compact-filter{position:static}.cols{min-height:520px}.league-card-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr))}}
+    @media(max-width:575.98px){.league-card-grid{grid-template-columns:minmax(0,1fr);padding:16px !important}}
 </style>
 <?php
 include 'includes/bar.php';
 
 ?>
 
-<div class="container-fluid" style="padding-top: 120px;">
+<div class="container-fluid" style="padding-top: 80px;">
     <div class="card bg-transparent border-0">
         <div class="card-header bg-transparent border-0">
             <h2 class="font-weight-bolder">Browse Leagues</h2>
         </div>
         <div class="card-body">
             <div class="row align-items-start g-4">
-                <div class="col-3 ">
-                    <div class="p-4 h-100 cols">
-                        <span class="text-uppercase font-weight-bolder text-muted mt-1">Filter</span>
-                        <div class="col-12">
-                            <p class="text-muted font-weight-bolder mt-1">Sport</p>
+                <div class="col-xl-2 col-lg-3">
+                    <form class="compact-filter" method="get" action="leagues.php">
+                        <?php $activeFilterCount=(int)($filters['search']!=='')+(int)($filters['sport']!=='')+(int)($filters['status']!==''); ?>
+                        <div class="filter-panel-header">
+                            <div class="filter-panel-heading"><span class="filter-panel-icon"><i class="bi bi-funnel-fill"></i></span><h5 class="filter-panel-title">Filters</h5></div>
+                            <span class="filter-panel-count<?= $activeFilterCount>0?' has-filters':'' ?>"><?= $activeFilterCount ?></span>
                         </div>
-                        <div class="col-12">
-                            <input type="checkbox">
-                            <label for="" class="form-label">All Sport</label>
-                        </div>
-                        <div class="col-12">
-                            <input type="checkbox">
-                            <label for="" class="form-label">Basketball</label>
-                        </div>
-                        <div class="col-12">
-                            <input type="checkbox">
-                            <label for="" class="form-label">Volleyball</label>
-                        </div>
-                        <div class="col-12">
-                            <p class="text-muted font-weight-bolder mt-1">Status</p>
-                        </div>
-                        <div class="col-12">
-                            <input type="checkbox">
-                            <label for="" class="form-label">Upcoming</label>
-                        </div>
-                        <div class="col-12">
-                            <input type="checkbox">
-                            <label for="" class="form-label">Total Registration</label>
-                        </div>
-                        <div class="col-12">
-                            <input type="checkbox">
-                            <label for="" class="form-label">Ongoing</label>
-                        </div>
-                        <div class="col-12">
-                            <input type="checkbox">
-                            <label for="" class="form-label">Ended</label>
-                        </div>
-                        <div class="text-center">
-                            <div class="col-12 m-2">
-                                <button class="btn-primary btn" style="border:1px solid white; padding:5px 50px;"> Apply Filters</button>
+                        <div class="filter-panel-body">
+                            <div class="filter-panel-field">
+                                <label for="leagueSearch"><i class="bi bi-search"></i>Search</label>
+                                <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input id="leagueSearch" name="search" class="form-control" value="<?= htmlspecialchars($filters['search']) ?>" placeholder="Search league name..."></div>
                             </div>
-                            <div class="col-12 m-2">
-                                <button class="btn-light  btn" style="border:1px solid blue; padding:5px 50px;"> Reset Filters</button>
+                            <div class="filter-panel-field">
+                                <label for="sportFilter"><i class="bi bi-trophy"></i>Sport</label>
+                                <div class="input-group"><span class="input-group-text"><i class="bi bi-trophy"></i></span><select id="sportFilter" name="sport" class="form-select"><option value="">All Sports</option><?php foreach($sportOptions as $sportOption): ?><option value="<?= htmlspecialchars($sportOption) ?>" <?= $filters['sport']===$sportOption?'selected':'' ?>><?= htmlspecialchars($sportOption) ?></option><?php endforeach; ?></select></div>
+                            </div>
+                            <div class="filter-panel-field">
+                                <label for="statusFilter"><i class="bi bi-activity"></i>Status</label>
+                                <div class="input-group"><span class="input-group-text"><i class="bi bi-activity"></i></span><select id="statusFilter" name="status" class="form-select"><option value="">All Statuses</option><?php foreach(['Upcoming','Open','Ongoing','Completed'] as $statusOption): ?><option value="<?= htmlspecialchars($statusOption) ?>" <?= $filters['status']===$statusOption?'selected':'' ?>><?= $statusOption ?></option><?php endforeach; ?></select></div>
                             </div>
                         </div>
-                    </div>
+                    </form>
                 </div>
-                <div class="col-9 ">
+                <div class="col-xl-10 col-lg-9">
                     <div class=" p-4 cols">
-                        <div class="row g-3 p-4">
-                            <?php $count = '0';
-                            $fetch_league = "SELECT * FROM tbl_league";
-                            $league_res = mysqli_query($conn, $fetch_league);
-                            while ($league_row = mysqli_fetch_assoc($league_res)) {
-                                $start_date = date("F d, Y", strtotime($league_row['start_date']));
-                                $end_date = date("F d, Y", strtotime($league_row['end_date']));
-                                $count++;
+                        
+                        <div class="league-card-grid">
+                            <?php if($filteredLeagues): foreach ($filteredLeagues as $league_row) {
+                                $start_date = date("F j, Y", strtotime($league_row['start_date']));
+                                $end_date = date("F j, Y", strtotime($league_row['end_date']));
+                                $status = $league_row['live_status'];
+                                $currentTeams = (int)$league_row['current_teams'];
+                                $slotsLeft = max(0, intval($league_row['max_team']) - intval($currentTeams));
                             ?>
-                                <div class="col-xl-3 col-lg-4 col-md-6">
-                                    <div class="card cards">
-                                        <div class="card-header position-relative p-0 border-0 overflow-hidden">
-
-                                            <!-- IMAGE -->
-                                            <img src="vendor/images/uploads/<?php echo  $league_row['league_image']; ?>"
-                                                alt=""
-                                                class="img-fluid w-100"
-                                                style="object-fit:cover;">
-                                            <!-- BADGE OVERLAY -->
-                                            <span class="badge bg-success position-absolute top-0 end-0 m-3 px-3 py-2">
-                                                <?php echo $league_row['stat']; ?>
-                                            </span>
-
+                                <div class="col-xl-4 col-lg-6 col-md-6 col-sm-6">
+                                    <article class="featured-card">
+                                        <a href="team_information.php?id=<?= (int)$league_row['id'] ?>" class="featured-card-link" aria-label="<?= htmlspecialchars($league_row['league_name']) ?>"></a>
+                                        <div class="featured-image">
+                                            <?php
+                                                $imageName=(string)($league_row['league_image']??'');
+                                                if (StorageService::isCloudinary($imageName)) {
+                                                    $imgSrc=$imageName;
+                                                } else {
+                                                    $imgSrc='assets/uploads/'.basename($imageName);
+                                                    if ($imageName==='' || !is_file(__DIR__.'/'.$imgSrc)) {
+                                                        $imgSrc = 'assets/images/default-league.svg';
+                                                    }
+                                                }
+                                            ?>
+                                            <img src="<?= htmlspecialchars($imgSrc,ENT_QUOTES,'UTF-8') ?>" alt="<?= htmlspecialchars($league_row['league_name']) ?>" loading="lazy" onerror="this.onerror=null;this.src='assets/images/default-league.svg';">
+                                            <?php
+                                                $statusLabel = getLeagueStatusLabel($status);
+                                                $statusClass = getLeagueStatusClass($status);
+                                            ?>
+                                            <span class="status-pill <?= htmlspecialchars($statusClass) ?>"><?= htmlspecialchars($statusLabel) ?></span>
                                         </div>
-                                        <div class="card-body p-2 pt-0">
-                                            <div class="p-1">
-
-                                                <p class=" mb-0 font-weight-bolder text-capitalize"><?php echo $league_row['league_name']; ?></p>
-                                            </div>
-                                            <div class="p-3 bg-light rounded bg-transparent ">
-
-                                                <div class="d-grid gap-2">
-                                                    <span><i class="bi bi-calendar"></i> <?php echo $start_date . '-' . $end_date; ?></span>
-                                                    <span><i class="bi bi-person"></i> <?php echo $league_row['max_team']; ?></span>
-                                                </div>
-                                            </div>
-                                            <div class="text-center">
-                                                <a type="button" href="team_information.php?id=<?php echo $league_row["id"]; ?>" class="btn-light btn" style="border:1px solid blue;">View details</a>
-
+                                        <div class="featured-body">
+                                            <div class="featured-sport"><?= htmlspecialchars($league_row['sport'] ?? '') ?></div>
+                                            <h3 class="featured-title"><?= htmlspecialchars($league_row['league_name']) ?></h3>
+                                            <div class="featured-meta">
+                                                <span><i class="bi bi-diagram-3"></i><?= htmlspecialchars($league_row['division'] ?? '') ?></span>
+                                                <span><i class="bi bi-people"></i><?= htmlspecialchars($league_row['category'] ?? '') ?></span>
+                                                <span><i class="bi bi-calendar3"></i><?= date('M d, Y', strtotime($league_row['start_date'])) ?></span>
+                                                <span><i class="bi bi-flag"></i><?= date('M d, Y', strtotime($league_row['end_date'])) ?></span>
                                             </div>
                                         </div>
-                                    </div>
+                                    </article>
                                 </div>
-                            <?php
-                            }
-                            ?>
+                            <?php } else: ?><div class="col-12"><div class="league-empty"><i class="bi bi-search fs-1 mb-2"></i><h5>No matching leagues</h5><p>Try changing or resetting your filters.</p><a href="leagues.php" class="btn btn-outline-primary">Reset Filters</a></div></div><?php endif; ?>
 
                         </div>
                     </div>
@@ -142,3 +352,25 @@ include 'includes/bar.php';
         </div>
     </div>
 </div>
+<script>
+    (function () {
+        var form = document.querySelector('.compact-filter');
+        var search = document.getElementById('leagueSearch');
+        var timer;
+        function applyFilters() {
+            clearTimeout(timer);
+            form.requestSubmit();
+        }
+        form.querySelectorAll('select').forEach(function (select) {
+            select.addEventListener('change', applyFilters);
+        });
+        search.addEventListener('input', function () {
+            clearTimeout(timer);
+            timer = setTimeout(applyFilters, 600);
+        });
+        form.addEventListener('submit', function () {
+            clearTimeout(timer);
+        });
+    })();
+</script>
+<?php include 'includes/footer.php'; ?>

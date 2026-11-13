@@ -1,0 +1,409 @@
+LEAGUE MANAGEMENT SYSTEM (LMS)
+ERD VISUALIZATION AND DATA DICTIONARY
+
+Source files:
+- lms/database/lms.sql
+- lms/database/migration_announcements.sql
+- lms/database/migration_notifications.sql
+- lms/database/migration_gallery_system.sql
+- lms/database/migration_scheduling_system.sql
+- lms/database/migration_add_created_by_league.sql
+- lms/database/migration_add_archived_at.sql
+- lms/database/migration_add_eligibility_requirements.sql
+- lms/database/migration_add_guideline_document.sql
+- lms/database/migration_add_player_document.sql
+
+Legend:
+- PK = Primary Key
+- FK = Foreign Key declared in migration/schema
+- FK* = Inferred relationship from column naming and application usage
+- AI = Auto Increment
+
+===============================================================================
+ERD VISUALIZATION
+===============================================================================
+
+Core user, league, team, player, and schedule flow:
+
+  +------------------+        1       *        +------------------+
+  | tbl_user         |-------------------------| tbl_league       |
+  | PK id            | FK tbl_league.created_by| PK id            |
+  +------------------+                         +------------------+
+          | 1                                             | 1
+          |                                               |
+          | FK*                                           | FK*
+          |                                               |
+          | *                                             | *
+  +------------------+        FK*       +------------------+
+  | tbl_team         |------------------| tbl_player       |
+  | PK id            | 1              * | PK id            |
+  | FK* league_id    |                  | FK* team_id      |
+  | FK* user_id      |                  +------------------+
+  +------------------+
+          | 1
+          |
+          | FK* team_a, team_b, winner
+          | *
+  +------------------+
+  | tbl_schedule     |
+  | PK id            |
+  | FK* league_id    |
+  | FK* team_a       |
+  | FK* team_b       |
+  | FK* winner       |
+  +------------------+
+
+Announcements and notifications:
+
+  +------------------+        1       *        +--------------------+
+  | tbl_league       |-------------------------| tbl_announcement   |
+  | PK id            | FK league_id            | PK id              |
+  +------------------+                         | FK league_id       |
+                                               | FK created_by      |
+  +------------------+        1       *        +--------------------+
+  | tbl_user         |-------------------------|
+  | PK id            | FK created_by           |
+  +------------------+
+
+  +------------------+        1       *        +--------------------+
+  | tbl_user         |-------------------------| tbl_notification   |
+  | PK id            | FK user_id              | PK id              |
+  +------------------+                         | FK user_id         |
+                                               +--------------------+
+
+Gallery:
+
+  +----------------------+        1       *        +----------------------+
+  | tbl_gallery_posts    |-------------------------| tbl_gallery_images   |
+  | PK id                | FK post_id              | PK id                |
+  | FK* uploaded_by      |                         | FK post_id           |
+  +----------------------+                         +----------------------+
+          |
+          | FK* uploaded_by
+          |
+  +------------------+
+  | tbl_user         |
+  | PK id            |
+  +------------------+
+
+Scheduling history and configuration:
+
+  +------------------+        1       *        +----------------------+
+  | tbl_schedule     |-------------------------| tbl_match_history    |
+  | PK id            | FK schedule_id          | PK id                |
+  +------------------+                         | FK schedule_id       |
+                                               | FK league_id         |
+  +------------------+        1       *        | FK team_a_id         |
+  | tbl_league       |-------------------------| FK team_b_id         |
+  | PK id            | FK league_id            | FK winner_id         |
+  +------------------+                         +----------------------+
+
+  +------------------+        1       *        +----------------------+
+  | tbl_team         |-------------------------| tbl_match_history    |
+  | PK id            | FK team_a_id/team_b_id  +----------------------+
+  +------------------+        and winner_id
+
+  +------------------+        1       1        +------------------------+
+  | tbl_league       |-------------------------| tbl_scheduling_config |
+  | PK id            | FK league_id UNIQUE     | PK id                  |
+  +------------------+                         | FK league_id           |
+                                               +------------------------+
+
+Other security/audit table:
+
+  +------------------+
+  | tbl_attempts     |
+  | PK id            |
+  | ip_address       |
+  | try_time         |
+  +------------------+
+
+===============================================================================
+RELATIONSHIP SUMMARY
+===============================================================================
+
+Declared foreign keys:
+- tbl_league.created_by -> tbl_user.id (ON DELETE SET NULL)
+- tbl_announcement.league_id -> tbl_league.id (ON DELETE CASCADE)
+- tbl_announcement.created_by -> tbl_user.id (ON DELETE CASCADE)
+- tbl_notification.user_id -> tbl_user.id (ON DELETE CASCADE)
+- tbl_gallery_images.post_id -> tbl_gallery_posts.id (ON DELETE CASCADE)
+- tbl_match_history.schedule_id -> tbl_schedule.id (ON DELETE CASCADE)
+- tbl_match_history.league_id -> tbl_league.id (ON DELETE CASCADE)
+- tbl_match_history.team_a_id -> tbl_team.id (ON DELETE CASCADE)
+- tbl_match_history.team_b_id -> tbl_team.id (ON DELETE CASCADE)
+- tbl_match_history.winner_id -> tbl_team.id (ON DELETE SET NULL)
+- tbl_scheduling_config.league_id -> tbl_league.id (ON DELETE CASCADE)
+
+Inferred relationships:
+- tbl_team.league_id -> tbl_league.id
+- tbl_team.user_id -> tbl_user.id
+- tbl_player.team_id -> tbl_team.id
+- tbl_schedule.league_id -> tbl_league.id
+- tbl_schedule.team_a -> tbl_team.id
+- tbl_schedule.team_b -> tbl_team.id
+- tbl_schedule.winner -> tbl_team.id
+- tbl_gallery_posts.uploaded_by -> tbl_user.id
+- tbl_notification.related_id may reference a team, schedule, league, or other related record depending on notification type.
+
+===============================================================================
+DATA DICTIONARY
+===============================================================================
+
+TABLE: tbl_attempts
+Purpose: Tracks login or access attempts by IP address.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  Attempt record identifier.
+ip_address         varchar(255)      No            IP address that made the attempt.
+try_time           bigint(11)        No            Attempt timestamp or time value.
+
+TABLE: tbl_user
+Purpose: Stores organizer and team representative accounts.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  User identifier.
+res_id             varchar(255)      No            Resident or external reference ID.
+fname              varchar(255)      No            First name.
+lname              varchar(255)      No            Last name.
+mname              varchar(255)      No            Middle name.
+suffix             varchar(255)      No            Name suffix.
+phone              varchar(255)      No            Contact number.
+email              varchar(255)      No            Email/login identifier.
+pass               varchar(255)      No            Hashed password.
+role               varchar(255)      No            User role. Comment: 1 = organizer, 2 = team representative.
+stat               varchar(255)      No            Account status; default is 1.
+pass_stat          int(11)           No            Password status. Comment: 0 = changed, 1 = not yet changed.
+created            datetime          No            Record creation timestamp; defaults to current timestamp.
+
+TABLE: tbl_league
+Purpose: Stores league/tournament configuration and registration rules.
+
+Column                     Type                                             Null  Key     Description
+-------------------------  -----------------------------------------------  ----  ------  --------------------------------
+id                         int(11)                                          No    PK, AI  League identifier.
+league_image               varchar(255)                                     No            League image filename/path.
+league_name                varchar(255)                                     No            League name.
+sport                      varchar(255)                                     No            Sport type.
+division                   enum('Open','Under - 13','Under - 18','Under - 21') No          Age or league division.
+descrip                    varchar(255)                                     No            League description.
+category                   enum('Male','Female','Mix')                     No            Participant category.
+format                     varchar(255)                                     No            Tournament format.
+start_date                 varchar(255)                                     No            League start date.
+end_date                   varchar(255)                                     No            League end date.
+regis_start                varchar(255)                                     No            Registration start date.
+regis_end                  varchar(255)                                     No            Registration end date.
+venue                      varchar(255)                                     No            League venue.
+max_team                   varchar(255)                                     No            Maximum number of teams.
+max_player                 varchar(255)                                     No            Maximum players per team.
+regis_fee                  varchar(255)                                     No            Registration fee.
+add_info                   varchar(255)                                     No            Additional league information.
+stat                       varchar(255)                                     No            League status, such as Upcoming.
+min_age                    int(11)                                          Yes           Minimum eligible player age; default 0.
+max_age                    int(11)                                          Yes           Maximum eligible player age; default 100.
+min_male_players           int(11)                                          Yes           Minimum required male players; default 0.
+min_female_players         int(11)                                          Yes           Minimum required female players; default 0.
+registration_window_open   tinyint(1)                                       Yes           Whether registration is open; default 1.
+created                    datetime                                         No            Record creation timestamp; defaults to current timestamp.
+created_by                 int(11)                                          Yes   FK      Organizer/user who created the league; references tbl_user.id.
+is_archived                tinyint(1)                                       Yes           Archive flag; default 0.
+archived_at                datetime                                         Yes           Date/time when league was archived.
+guideline_document         varchar(255)                                     Yes           Uploaded guideline document path/filename.
+
+TABLE: tbl_team
+Purpose: Stores teams registered in leagues.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  Team identifier.
+team_name          varchar(255)      No            Team name.
+team_image         varchar(255)      No            Team image filename/path.
+league_id          varchar(255)      No    FK*     League joined by the team; inferred reference to tbl_league.id.
+bracket            varchar(255)      No            Bracket assignment.
+team_repre         varchar(255)      No             Team representative name.
+email              varchar(255)      No            Team contact email.
+phone              varchar(255)      No            Team contact phone.
+status             varchar(255)      No            Registration status, such as Pending, approved, or rejected.
+user_id            varchar(255)      No    FK*     Account that registered/manages the team; inferred reference to tbl_user.id.
+created            datetime          No            Record creation timestamp; defaults to current timestamp.
+
+TABLE: tbl_player
+Purpose: Stores team roster/player information.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  Player identifier.
+team_id            varchar(255)      No    FK*     Team this player belongs to; inferred reference to tbl_team.id.
+name               varchar(255)      No            Player full name.
+age                varchar(255)      No            Player age.
+role               varchar(255)      No            Player role/position.
+gender             varchar(255)      No            Player gender.
+jersey_number      varchar(255)      No            Player jersey number.
+document           varchar(255)      Yes           Uploaded player document path/filename.
+created            datetime          No            Record creation timestamp; defaults to current timestamp.
+
+TABLE: tbl_schedule
+Purpose: Stores scheduled matches/games and match results.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  Schedule/match identifier.
+league_id          int               No    FK*     League for this match; inferred reference to tbl_league.id.
+team_a             int               No    FK*     First team; inferred reference to tbl_team.id.
+a_score            int               Yes           First team's score; default 0 after migration.
+team_b             int               No    FK*     Second team; inferred reference to tbl_team.id.
+b_score            int               Yes           Second team's score; default 0 after migration.
+date               date              No            Match date after scheduling migration.
+time               time              No            Match time after scheduling migration.
+venue              varchar(255)      Yes           Match venue.
+round              int               Yes           Tournament round; default 1.
+match_number       int               Yes           Match sequence number.
+is_automated       tinyint(1)        Yes           Whether match was auto-scheduled; default 1.
+conflict_detected  tinyint(1)        Yes           Whether a schedule conflict was detected; default 0.
+conflict_reason    varchar(255)      Yes           Explanation for conflict.
+status             varchar(255)      No            Match status, such as Upcoming.
+winner             varchar(255)      No    FK*     Winning team; inferred reference to tbl_team.id.
+created            datetime          No            Record creation timestamp; defaults to current timestamp.
+updated_at         datetime          Yes           Last update timestamp; defaults/current timestamp on update.
+
+Indexes:
+- idx_league_date (league_id, date)
+- idx_team_a_date (team_a, date, time)
+- idx_team_b_date (team_b, date, time)
+- idx_venue_date (venue, date, time)
+- idx_status (status)
+- idx_conflict (conflict_detected)
+
+TABLE: tbl_announcement
+Purpose: Stores league announcements created by users.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  Announcement identifier.
+league_id          int(11)           No    FK      Related league; references tbl_league.id.
+title              varchar(255)      No            Announcement title.
+content            text              No            Announcement body/content.
+created_by         int(11)           No    FK      Author user; references tbl_user.id.
+created            datetime          No            Creation timestamp; defaults to current timestamp.
+updated            datetime          Yes           Last update timestamp.
+
+Indexes:
+- idx_league_id (league_id)
+- idx_created (created)
+
+TABLE: tbl_notification
+Purpose: Stores user notifications.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  Notification identifier.
+user_id            int(11)           No    FK      Recipient user; references tbl_user.id.
+type               varchar(50)       No            Notification type, such as team_registration, schedule_update, team_approved, team_rejected, or announcement.
+title              varchar(255)      No            Notification title.
+message            text              No            Notification message.
+related_id         int(11)           Yes           Related record ID, such as team_id, schedule_id, or league_id.
+is_read            tinyint(1)        Yes           Read flag; default 0.
+created            datetime          No            Creation timestamp; defaults to current timestamp.
+
+Indexes:
+- idx_user_id (user_id)
+- idx_is_read (is_read)
+- idx_created (created)
+
+TABLE: tbl_gallery_posts
+Purpose: Stores gallery post metadata.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int               No    PK, AI  Gallery post identifier.
+title              varchar(255)      No            Gallery post title.
+description        longtext          Yes           Gallery post description.
+uploaded_by        int               Yes   FK*     User who uploaded the post; inferred reference to tbl_user.id.
+created_at         datetime          Yes           Creation timestamp; defaults to current timestamp.
+updated_at         datetime          Yes           Last update timestamp; defaults/current timestamp on update.
+
+Indexes:
+- idx_created_at (created_at)
+- idx_uploaded_by (uploaded_by)
+
+TABLE: tbl_gallery_images
+Purpose: Stores images attached to gallery posts.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int               No    PK, AI  Gallery image identifier.
+post_id            int               No    FK      Related gallery post; references tbl_gallery_posts.id.
+filename           varchar(255)      No            Image filename/path.
+display_order      int               Yes           Image order within the post; default 0.
+created_at         datetime          Yes           Creation timestamp; defaults to current timestamp.
+
+Indexes:
+- idx_post_id (post_id)
+- idx_display_order (display_order)
+
+TABLE: tbl_match_history
+Purpose: Stores completed/cancelled/postponed match history and final scores.
+
+Column             Type                                      Null  Key     Description
+-----------------  ----------------------------------------  ----  ------  --------------------------------
+id                 int                                       No    PK, AI  Match history identifier.
+schedule_id        int                                       No    FK      Source schedule; references tbl_schedule.id.
+league_id          int                                       No    FK      Related league; references tbl_league.id.
+team_a_id          int                                       No    FK      First team; references tbl_team.id.
+team_b_id          int                                       No    FK      Second team; references tbl_team.id.
+team_a_score       int                                       Yes           First team's final score; default 0.
+team_b_score       int                                       Yes           Second team's final score; default 0.
+winner_id          int                                       Yes   FK      Winning team; references tbl_team.id.
+match_date         date                                      No            Match date.
+match_time         time                                      No            Match time.
+venue              varchar(255)                              Yes           Match venue.
+status             enum('Completed','Cancelled','Postponed') Yes           Match history status; default Completed.
+notes              longtext                                  Yes           Match notes.
+created_at         datetime                                  Yes           Creation timestamp; defaults to current timestamp.
+updated_at         datetime                                  Yes           Last update timestamp; defaults/current timestamp on update.
+
+Indexes:
+- idx_league_date (league_id, match_date)
+- idx_team_a (team_a_id)
+- idx_team_b (team_b_id)
+- idx_status (status)
+
+TABLE: tbl_scheduling_config
+Purpose: Stores scheduling rules and automation preferences per league.
+
+Column                  Type          Null  Key         Description
+----------------------  ------------  ----  ----------  --------------------------------
+id                      int           No    PK, AI      Scheduling config identifier.
+league_id               int           No    FK, UNIQUE  Related league; references tbl_league.id.
+match_duration_minutes  int           Yes               Match duration in minutes; default 60.
+rest_period_minutes     int           Yes               Rest period between matches in minutes; default 15.
+earliest_start_time     time          Yes               Earliest allowed match start time; default 08:00:00.
+latest_end_time         time          Yes               Latest allowed match end time; default 22:00:00.
+max_matches_per_day     int           Yes               Maximum matches per day; default 10.
+auto_schedule_enabled   tinyint(1)    Yes               Auto scheduling flag; default 1.
+conflict_check_enabled  tinyint(1)    Yes               Conflict detection flag; default 1.
+created_at              datetime      Yes               Creation timestamp; defaults to current timestamp.
+updated_at              datetime      Yes               Last update timestamp; defaults/current timestamp on update.
+
+Indexes:
+- idx_league (league_id)
+
+===============================================================================
+NOTES
+===============================================================================
+
+1. The base dump defines several relationship columns as varchar(255), including
+   tbl_team.league_id, tbl_team.user_id, tbl_player.team_id, and tbl_schedule.winner.
+   They are shown as inferred relationships because no foreign key constraints are
+   declared for them in the base SQL dump.
+
+2. The scheduling migration changes tbl_schedule.league_id, team_a, team_b, date,
+   time, a_score, and b_score to stronger numeric/date/time types. This document
+   uses the migrated schema for tbl_schedule.
+
+3. Some migrations use bracket syntax, for example [tbl_league], which is not
+   standard MySQL syntax. Their intended columns are still included because the
+   application and base dump reflect those additions.
+

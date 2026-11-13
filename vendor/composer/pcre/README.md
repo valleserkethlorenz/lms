@@ -179,7 +179,7 @@ preg_match('/(a)(b)*(c)(d)*/', 'ac', $matches, $flags);
 PHPStan Extension
 -----------------
 
-To use the PHPStan extension if you do not use `phpstan/extension-installer` you can include `assets/composer/pcre/extension.neon` in your PHPStan config.
+To use the PHPStan extension if you do not use `phpstan/extension-installer` you can include `vendor/composer/pcre/extension.neon` in your PHPStan config.
 
 The extension provides much better type information for $matches as well as regex validation where possible.
 

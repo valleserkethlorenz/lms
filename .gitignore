@@ -1,0 +1,53 @@
+# Sensitive files - NEVER commit credentials
+README.TXT
+credentials.txt
+.env
+.env.local
+.env.production
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+debug_*.log
+
+# Upload directories (keep structure, ignore files)
+uploads/profiles/*
+!uploads/profiles/.gitkeep
+uploads/team_logos/*
+!uploads/team_logos/.gitkeep
+uploads/league_images/*
+!uploads/league_images/.gitkeep
+uploads/gallery/*
+!uploads/gallery/.gitkeep
+
+# Composer
+vendor/
+# composer.lock IS committed on purpose - deployments need it for reproducible installs
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+# Python (document quality checker)
+__pycache__/
+*.py[cod]
+
+# Test artifacts (not part of test suite)
+test_*.php
+test-*.html
+
+# Generated test reports (re-run tests/test_accuracy.py to recreate)
+tests/reports/*.json
+!tests/reports/.gitkeep

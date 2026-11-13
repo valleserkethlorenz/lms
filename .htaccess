@@ -1,0 +1,137 @@
+# Set session name globally so all session_start() calls use LMS_SESSION
+# This prevents session name mismatch between login and protected pages
+<IfModule mod_php.c>
+    php_value session.name "LMS_SESSION"
+</IfModule>
+<IfModule mod_php7.c>
+    php_value session.name "LMS_SESSION"
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # Prevent MIME type sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # Enable XSS protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Enforce HTTPS (uncomment in production)
+    # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    
+    # Referrer Policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Content Security Policy (adjust as needed)
+    # font-src includes data: because FullCalendar v6 embeds its icon font
+    # (fcicons) as a base64 data: URL; without it the calendar toolbar
+    # chevrons render as empty boxes.
+    # frame-src allows the committee livestream preview and the public live
+    # viewer to embed YouTube and Facebook players. Without these hosts the
+    # browser blocks the iframe and the player area stays blank.
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.datatables.net; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; connect-src 'self'; frame-src 'self' https://www.google.com https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://www.facebook.com https://web.facebook.com;"
+    
+    # Remove server signature
+    Header always unset X-Powered-By
+    Header always unset Server
+</IfModule>
+
+# Disable directory browsing
+Options -Indexes
+
+# Prevent access to sensitive files
+<FilesMatch "^(README\.TXT|CREDENTIALS.*|\.env|\.gitignore|composer\.(json|lock))$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Prevent access to hidden files and directories
+<FilesMatch "^\.">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Protect config directory
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Block access to config directory
+    RewriteRule ^config/ - [F,L]
+    
+    # Block access to vendor PHP files and sensitive files, but allow static assets
+    RewriteRule ^vendor/.*\.(php|phtml|php3|php4|php5|pl|py|cgi|sh|sql|log|bak|backup|old|tmp|temp|cache|env|json|lock|xml|yml|yaml|md|txt|sh|bat|exe)$ - [F,L,NC]
+</IfModule>
+
+# Prevent access to backup and temporary files
+<FilesMatch "\.(bak|backup|old|tmp|temp|cache|log|sql)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Disable server signature
+ServerSignature Off
+
+# Prevent access to PHP error logs
+<FilesMatch "^php_error">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Increase security for uploads directory
+<IfModule mod_php7.c>
+    <FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|cgi|sh)$">
+        # Allow PHP execution only in specific directories
+    </FilesMatch>
+</IfModule>
+
+# Prevent hotlinking of images
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP_REFERER} !^$
+    RewriteCond %{HTTP_REFERER} !^http(s)?://(www\.)?localhost [NC]
+    RewriteCond %{HTTP_REFERER} !^http(s)?://(www\.)?yourdomain.com [NC]
+    RewriteRule \.(jpg|jpeg|png|gif|webp|svg)$ - [F,NC]
+</IfModule>
+
+# Enable compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Browser caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType text/css "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+    ExpiresByType application/pdf "access plus 1 month"
+    ExpiresByType font/woff "access plus 1 month"
+    ExpiresByType font/woff2 "access plus 1 month"
+</IfModule>

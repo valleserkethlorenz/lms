@@ -2,7 +2,7 @@
 
 namespace Complex;
 
-include(__DIR__ . '/../assets/autoload.php');
+include(__DIR__ . '/../vendor/autoload.php');
 
 echo 'Function Examples', PHP_EOL;
 

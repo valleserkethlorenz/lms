@@ -18,7 +18,7 @@
             <output>api</output>
             <ignore hidden="true" symlinks="true">
                 <path>tests/**/*</path>
-                <path>assets/**/*</path>
+                <path>vendor/**/*</path>
             </ignore>
             <extensions>
                 <extension>php</extension>

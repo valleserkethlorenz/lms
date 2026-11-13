@@ -1,224 +1,292 @@
 <?php
-
+// Ensure variables expected by this include are defined to avoid notices
+$full = ($full ?? '') ?: ($_SESSION['lms_username'] ?? '');
+$organizerRoleLabel = 'Organizer';
+$conn = $conn ?? null;
+$_bar_unread = 0;
+if (!empty($userId) && !empty($conn)) {
+    $_bar_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_notification WHERE user_id = ? AND is_read = 0");
+    if ($_bar_stmt) {
+        $_bar_stmt->bind_param('i', $userId);
+        $_bar_stmt->execute();
+        $_bar_stmt->bind_result($_bar_unread);
+        $_bar_stmt->fetch();
+        $_bar_stmt->close();
+    }
+}
 ?>
-
 <style>
-    .sidelist a:hover {
-        background-color: #2f7de4;
-        border-top-right-radius: 20px;
-        border-bottom-right-radius: 20px;
-        color: black !important;
-
+    .sidelist a { color:white; font-weight:400; transition:background 0.2s ease, border-color 0.2s ease; border-left:4px solid transparent; }
+    .sidelist a:hover { background:rgba(47,125,228,0.08); border-left-color:#2f7de4; color:#fff !important; }
+    .sidelist > a.actives { background:rgba(47,125,228,0.15); border-left-color:#2f7de4; color:#fff !important; font-weight:600; }
+    @media (min-width:769px) {
+        .sidebar { position:fixed; top:0; left:0; height:100vh; width:220px; z-index:1040; }
+        #content-wrapper { margin-left:220px !important; }
+        .btn.d-lg-none { display:none !important; }
     }
-
-    .sidelist a {
-        color: white;
+    @media (max-width:768px) {
+        .sidebar { position:fixed; top:0; left:-250px; height:100%; width:220px; transition:left 0.3s ease-in-out; z-index:1050; }
+        .sidebar.active { left:0; }
+        #content-wrapper { margin-left:0 !important; width:100%; }
     }
-
-    .actives {
-        background-color: #2f7de4;
-        border-top-right-radius: 20px;
-        border-bottom-right-radius: 20px;
+    #accordionSidebar { display:flex; flex-direction:column; height:100vh; padding-top:0.5rem; overflow:hidden; }
+    #accordionSidebar .nav-item#logout-item { margin-top:auto; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; padding-bottom:12px; }
+    .sidebar-logo-wrap { padding-top:16px; padding-bottom:12px; }
+    .sidebar-logo { width:64px; height:64px; border-radius:50%; overflow:hidden; margin:0 auto; box-shadow:0 4px 12px rgba(0,0,0,0.18); }
+    .sidebar-logo img { width:100%; height:100%; object-fit:cover; display:block; border-radius:50%; }
+    .role-notification-link { position:relative; display:inline-flex !important; align-items:center; justify-content:center; width:46px; height:46px; padding:0 !important; margin-right:8px; border-radius:50%; line-height:1; cursor:pointer; z-index:1; }
+    .role-notification-link:hover { background:rgba(255,255,255,.1); }
+    .role-notification-link .bi-bell-fill { display:block; font-size:24px; line-height:1; }
+    .role-notification-badge { position:absolute; top:2px; right:0; display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 5px; border:2px solid #09173c; border-radius:4px; background:#dc3545; color:#fff; font-size:10px; font-weight:700; line-height:1; pointer-events:none; z-index:2; }
+    /* Submenu */
+    .settings-submenu { display:none; padding-left:1.5rem; }
+    .settings-submenu.open { display:block; }
+    .settings-submenu a {
+        font-size:13px !important;
+        font-weight:400 !important;
+        padding:7px 12px !important;
+        letter-spacing:0.5px;
+        margin-right:8px;
+        margin-bottom:2px;
+        border-radius:0 6px 6px 0;
+        border-left:3px solid transparent;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     }
-
-    .actives a {
-        color: black !important;
-        font-weight: bold;
+    .settings-submenu a:hover {
+        background:rgba(47, 125, 228, 0.12) !important;
+        border-left-color:#2f7de4;
+        color:#fff !important;
     }
-
-
-
-
-    /* Sidebar responsiveness */
-    @media (max-width: 768px) {
-        #wrapper {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: -250px;
-            height: 100%;
-            width: 220px;
-            transition: left 0.3s ease-in-out;
-            z-index: 1050;
-        }
-
-        .sidebar.active {
-            left: 0;
-        }
-
-        #content-wrapper {
-            margin-left: 0 !important;
-            width: 100%;
-        }
+    .settings-submenu a.actives {
+        background:rgba(47, 125, 228, 0.18) !important;
+        border-left-color:#2f7de4;
+        color:#fff !important;
     }
-
-    /* Make cards stack on phones */
-    @media (max-width: 576px) {
-        .dashboards h1 {
-            font-size: 28px;
+    .settings-toggle .caret-icon { transition: transform 0.2s; }
+    .settings-toggle.open .caret-icon { transform: rotate(180deg); }
+    /* ── Collapsible sidebar (mini rail on desktop, drawer on mobile) ── */
+    #accordionSidebar, #content-wrapper, .topbar { transition: left .25s ease, width .25s ease, margin-left .25s ease; }
+    .lms-sidebar-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1045; display:none; }
+    .lms-sidebar-backdrop.show { display:block; }
+    .topbar-toggle { display:inline-flex; align-items:center; justify-content:center; }
+    @media (min-width:769px) {
+        body.lms-mini .sidebar { width:68px !important; min-width:68px !important; max-width:68px !important; }
+        body.lms-mini #content-wrapper { margin-left:68px !important; }
+        body.lms-mini .topbar { left:68px !important; width:calc(100% - 68px) !important; }
+        body.lms-mini .sidebar .nav-link span,
+        body.lms-mini .sidebar .caret-icon { display:none !important; }
+        /* Keep icons visible & centered in the rail (SB Admin forces nav-link width to 14rem) */
+        body.lms-mini .sidebar .nav-link { display:flex !important; align-items:center; justify-content:center; width:100% !important; padding:1rem 0 !important; text-align:center; }
+        body.lms-mini .sidebar .nav-link i { margin-right:0 !important; font-size:1.05rem; }
+        body.lms-mini .sidebar-logo { width:40px; height:40px; }
+        /* Sub-items shown as a flyout next to the rail (no rail expansion) */
+        body.lms-mini #accordionSidebar { overflow:visible; }
+        body.lms-mini .sidebar .nav-item { position:relative; }
+        body.lms-mini .sidebar .settings-submenu {
+            display:none !important; position:absolute; left:100%; top:0; margin:0;
+            min-width:210px; padding:6px 0; background:#0d2050;
+            border-radius:0 8px 8px 0; box-shadow:0 10px 28px rgba(0,0,0,.4); z-index:1200;
         }
-
-        .dashboards img {
-            width: 30px;
-        }
+        body.lms-mini .sidebar .nav-item:hover > .settings-submenu,
+        body.lms-mini .sidebar .nav-item:focus-within > .settings-submenu { display:block !important; }
+        body.lms-mini .sidebar .settings-submenu .nav-link { width:auto !important; justify-content:flex-start; padding:7px 16px !important; text-align:left; }
+        body.lms-mini .sidebar .settings-submenu .nav-link i { margin-right:.3rem !important; font-size:.9rem !important; }
+    }
+    @media (max-width:768px) {
+        /* Topbar spans the full width on mobile (sidebar is an off-canvas drawer) */
+        .topbar { left:0 !important; width:100% !important; }
+        .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
+        .topbar .user-role-text { display:none; }
     }
 </style>
 <div id="wrapper">
-    <!-- Sidebar -->
+    <div id="lmsSidebarBackdrop" class="lms-sidebar-backdrop"></div>
     <ul class="navbar-nav sidebar sidebar-dark accordion" id="accordionSidebar" style="background-color:#09173c;">
-        <div class="container text-center" style="background-color:#09173c;">
-            <img src="../../vendor/images/logo.png" alt="logout" width="100" draggable="false" (dragstart)="false;" class="unselectable" class="class_logo" style="margin-top:25px; border-radius:100%; border:4px solid white; ">
-        </div>
-        <!-- Sidebar - Brand -->
-        <a class="sidebar-brand d-flex align-items-center justify-content-center disabled" style="text-decoration:none;" draggable="false" (dragstart)="false;" class="unselectable">
-
-            <div class="sidebar-brand-text mx-3 mt-2">
-                <span class="navbar-text" id="datetime" style="color:white; font-size:11px; letter-spacing: 2px;">
-
-
-                </span>
-            </div>
-        </a>
-        <!-- Divider -->
+        <li class="nav-item text-center sidebar-logo-wrap">
+            <a href="" class="d-inline-block" style="text-decoration:none;">
+                <div class="sidebar-logo">
+                    <img src="../../assets/images/logo.jpg" alt="CSDP Logo">
+                </div>
+            </a>
+        </li>
         <hr class="sidebar-divider">
-
-
-        <!-- Nav Item -->
         <li class="nav-item sidelist" id="dashboard-item">
-            <a class="nav-link" href="dashboard.php" draggable="false" (dragstart)="false;" class="unselectable" style="font-weight:bolder;">
-                <i data-feather="home" class="m-2"></i>
-                <span style="letter-spacing:2px; text-transform:uppercase; font-size:15px;">DASHBOARD</span>
+            <a class="nav-link" href="dashboard.php" style="font-weight:500;">
+                <i class="bi bi-speedometer2"></i>
+                <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Dashboard</span>
             </a>
         </li>
         <li class="nav-item sidelist" id="leagues-item">
-            <a class="nav-link" href="league.php" draggable="false" (dragstart)="false;" class="unselectable" style="font-weight:bolder;">
-                <i data-feather="home" class="m-2"></i>
-                <span style="letter-spacing:2px; text-transform:uppercase; font-size:15px;">LEAGUES</span>
+            <a class="nav-link settings-toggle" href="#" onclick="toggleSettings(event,'leaguesSub','leaguesToggleBtn')" style="font-weight:500;" id="leaguesToggleBtn">
+                <i class="bi bi-trophy"></i>
+                <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Leagues</span>
+                <i class="bi bi-chevron-down caret-icon ms-auto" style="font-size:12px;"></i>
+            </a>
+            <div class="settings-submenu" id="leaguesSub">
+                <a class="nav-link" href="league.php"><i class="bi bi-trophy me-1"></i>League Management</a>
+                <a class="nav-link" href="archive.php"><i class="bi bi-archive me-1"></i>Archived Leagues</a>
+            </div>
+        </li>
+        <li class="nav-item sidelist" id="reports-item">
+            <a class="nav-link" href="reports.php" style="font-weight:500;">
+                <i class="bi bi-file-earmark-bar-graph"></i>
+                <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Report</span>
             </a>
         </li>
-        <li class="nav-item sidelist" id="notification-item">
-            <a class="nav-link" href="notification.php" draggable="false" (dragstart)="false;" class="unselectable" style="font-weight:bolder;">
-                <i data-feather="home" class="m-2"></i>
-                <span style="letter-spacing:2px; text-transform:uppercase; font-size:15px;">notification</span>
+        <li class="nav-item sidelist" id="gallery-item">
+            <a class="nav-link" href="gallery.php" style="font-weight:500;">
+                <i class="bi bi-images"></i>
+                <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Gallery</span>
             </a>
         </li>
-
-
-        <hr class="sidebar-divider d-none d-md-block">
-
-    </ul>
-
-    <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarMenu" style="background-color:#11224e; color:white;">
-        <div class="offcanvas-header border-bottom">
-            <h5 class="offcanvas-title text-white">Navigation</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas">
-
-            </button>
-        </div>
-        <div class="offcanvas-body p-0">
-
-
-            <a class="sidebar-brand d-flex align-items-center justify-content-center disabled" style="text-decoration:none;" draggable="false" (dragstart)="false;" class="unselectable">
-
-                <div class="sidebar-brand-text mx-3 mt-2">
-                    <span class="navbar-text" id="sidedatetime" style="color:white; font-size:13px; letter-spacing: 2px;">
-
-
-                    </span>
-                </div>
+        <li class="nav-item sidelist" id="settings-item">
+            <a class="nav-link settings-toggle" href="#" onclick="toggleSettings(event,'settingsSub','settingsToggleBtn')" style="font-weight:500;" id="settingsToggleBtn">
+                <i class="bi bi-gear"></i>
+                <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Settings</span>
+                <i class="bi bi-chevron-down caret-icon ms-auto" style="font-size:12px;"></i>
             </a>
-
-            <ul class="navbar-nav">
-
-                <li class="nav-item sidelist" id="dashboard-item">
-                    <a class="nav-link d-flex align-items-center px-3 py-2 text-white fw-bold" href="dashboard.php">
-                        <img src="../../vendor/images/icon/chart.png" alt="chart" class="me-2" width="30">
-                        <span>DASHBOARD</span>
-                    </a>
-
-
-
-
-
-
-            </ul>
-        </div>
-    </div>
-
-    <!-- Content Wrapper -->
-    <div id="content-wrapper" style="background-color:#D3D3D3;">
-        <!-- Main Content -->
-        <div id="content">
-            <!-- Topbar -->
-            <nav class="navbar navbar-expand navbar-light topbar mb-4 static-top shadow" style="background-color:#09173c;">
-                <!-- Sidebar Toggle (Topbar) -->
-                <button class="btn btn-link d-lg-none p-0 m-2"
-                    type="button"
-                    data-bs-toggle="offcanvas"
-                    data-bs-target="#sidebarMenu">
-
-                    <img src="../../vendor/images/icon/hamburger.png" alt="hamburger" width="30">
-
+            <div class="settings-submenu" id="settingsSub">
+                <a class="nav-link" href="settings.php?tab=accounts"><i class="bi bi-person-gear me-1"></i>Accounts</a>
+            </div>
+        </li>
+        <li class="nav-item sidelist" id="logout-item">
+            <form class="logoutForm m-0 p-0" style="width:100%;">
+                <button type="submit" class="nav-link text-start w-100 border-0 bg-transparent" style="font-weight:400;color:#fff;padding-left:1rem;">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Logout</span>
                 </button>
-
-                <h3 class="mt-2 title_header" style="color:white; letter-spacing:2.5px; font-weight:bold;">
-                    LEAGUES MANAGEMENT SYSTEM
-                </h3>
-
-                <!-- Right side -->
+            </form>
+        </li>
+        <hr class="sidebar-divider d-none d-md-block">
+    </ul>
+    <!-- Content Wrapper -->
+    <div id="content-wrapper" style="background-color:#ffffff; padding-top:70px; margin-left:220px;">
+        <div id="content">
+            <nav class="navbar navbar-expand navbar-light topbar flex-nowrap mb-4 shadow" style="background-color:#09173c; position:fixed; top:0; left:220px; right:0; width:calc(100% - 220px); min-height:70px; z-index:999;">
+                <button class="btn btn-link topbar-toggle p-0 m-2" type="button" onclick="lmsToggleSidebar()" aria-label="Toggle sidebar">
+                    <i class="bi bi-list text-white fs-3"></i>
+                </button>
+                <h1 class="mt-2 topbar-title" style="color:white;letter-spacing:1px;font-weight:500;">ORGANIZER PANEL</h1>
                 <ul class="navbar-nav ms-auto align-items-center">
-
-
-                    <!-- User Dropdown -->
-                    <li class="nav-item dropdown no-arrow">
-                        <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" id="userDropdown" role="button"
-                            data-bs-toggle="dropdown" aria-expanded="false">
-                            <img class="img-profile rounded-circle" src="../../vendor/images/logo.png" width="40" height="40">
-                            <div class="ms-2 text-capitalize" style="color:white; font-size:13px;">
-                                <b><?php echo $full; ?></b><br>
-                                <?php if ($userType == '1') {
-                                    $userType = 'Organizer';
-                                } else {
-                                    $userType = 'Team Repre';
-                                }
-                                echo $userType; ?>
-                            </div>
-                        </a>
-
-                        <ul class="dropdown-menu dropdown-menu-end shadow animated--grow-in" aria-labelledby="userDropdown">
-
-                            <form id="logoutForm" class="dropdown-item " style="background-color:transparent;">
-                                <button type="submit" class="border-0" style="background-color:transparent;">
-                                    <!-- <img src="../../vendor/images/icon/logout.png" width="19" style="margin-right:7px;"> -->
-                                    Logout
-                                </button>
-                            </form>
-                        </ul>
+                    <li class="nav-item me-2">
+                        <button type="button" class="nav-link text-white role-notification-link" aria-label="Notifications" data-bs-toggle="popover" data-bs-trigger="click">
+                            <i class="bi bi-bell-fill"></i>
+                            <?php if ($_bar_unread > 0): ?><span class="role-notification-badge"><?= $_bar_unread > 99 ? '99+' : (int)$_bar_unread ?></span><?php endif; ?>
+                        </button>
                     </li>
-
+                    <li class="nav-item no-arrow">
+                        <div class="nav-link d-flex align-items-center" style="color:white;">
+                            <i class="bi bi-person-circle" style="font-size:32px;color:white;"></i>
+                            <div class="ms-2 text-capitalize" style="color:white;font-size:13px;">
+                                <b><?php echo htmlspecialchars($full, ENT_QUOTES, 'UTF-8'); ?></b><br>
+                                <span class="user-role-text"><?php echo $organizerRoleLabel; ?></span>
+                            </div>
+                        </div>
+                    </li>
                 </ul>
             </nav>
-
-
         </div>
-
         <script>
-            const currentUrl = window.location.href;
+            const currentPage = window.location.pathname.split('/').pop();
+            document.querySelectorAll('.sidelist a').forEach(link => {
+                const href = link.getAttribute('href');
+                if (!href || href === '#') return;
+                const linkPage = new URL(href, window.location.href).pathname.split('/').pop();
+                if (currentPage === linkPage) link.classList.add('actives');
+            });
 
-            // Get all nav links
-            const navLinks = document.querySelectorAll(' .sidelist a');
+            // --- Submenu state persistence via localStorage ---
+            const submenus = [
+                { subId: 'leaguesSub',  btnId: 'leaguesToggleBtn',  urls: ['league.php','archive.php','create_league.php','edit_league.php','league_info.php','pending_teams.php','schedule.php','standing.php','view_player.php'] },
+                { subId: 'settingsSub', btnId: 'settingsToggleBtn', urls: ['settings.php'] }
+            ];
 
-            navLinks.forEach(link => {
-                // If link's href matches current URL, add the 'active' class to its parent li
-                if (currentUrl.includes(link.getAttribute('href'))) {
-                    link.closest('.nav-item').classList.add('actives');
+            submenus.forEach(function(menu) {
+                const sub = document.getElementById(menu.subId);
+                const btn = document.getElementById(menu.btnId);
+                if (!sub || !btn) return;
+
+                const storageKey = 'sidebar_' + menu.subId;
+                const savedState = localStorage.getItem(storageKey);
+                const onSubPage = menu.urls.includes(currentPage);
+
+                // If on a page belonging to this submenu, always open it
+                if (onSubPage) {
+                    sub.classList.add('open');
+                    btn.classList.add('open');
+                    localStorage.setItem(storageKey, 'open');
+                    if (menu.subId === 'leaguesSub' && !['league.php', 'archive.php'].includes(currentPage)) {
+                        const managementLink = sub.querySelector('a[href="league.php"]');
+                        if (managementLink) managementLink.classList.add('actives');
+                        btn.classList.add('actives');
+                    }
+                } else if (savedState === 'open') {
+                    // Restore saved open state
+                    sub.classList.add('open');
+                    btn.classList.add('open');
+                }
+                // If savedState === 'closed' or null (no state yet), leave closed
+            });
+
+            function toggleSettings(e, subId, btnId) {
+                e.preventDefault();
+                const sub = document.getElementById(subId);
+                const btn = document.getElementById(btnId);
+                if (sub) sub.classList.toggle('open');
+                if (btn) btn.classList.toggle('open');
+                // Save state to localStorage
+                const isOpen = sub && sub.classList.contains('open');
+                localStorage.setItem('sidebar_' + subId, isOpen ? 'open' : 'closed');
+            }
+        </script>
+<script>
+    function lmsToggleSidebar() {
+        var sidebar = document.getElementById('accordionSidebar');
+        var backdrop = document.getElementById('lmsSidebarBackdrop');
+        if (!sidebar) return;
+        if (window.innerWidth <= 768) {
+            var open = sidebar.classList.toggle('active');
+            if (backdrop) backdrop.classList.toggle('show', open);
+        } else {
+            var mini = document.body.classList.toggle('lms-mini');
+            try { localStorage.setItem('lms_sidebar_mini', mini ? '1' : '0'); } catch (e) {}
+        }
+    }
+    (function () {
+        var sidebar = document.getElementById('accordionSidebar');
+        var backdrop = document.getElementById('lmsSidebarBackdrop');
+        if (!sidebar) return;
+        var key = 'lms_sidebar_mini';
+        function isDesktop() { return window.innerWidth > 768; }
+        try { if (isDesktop() && localStorage.getItem(key) === '1') document.body.classList.add('lms-mini'); } catch (e) {}
+        if (backdrop) {
+            backdrop.addEventListener('click', function () {
+                sidebar.classList.remove('active');
+                backdrop.classList.remove('show');
+            });
+        }
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && sidebar.classList.contains('active')) {
+                sidebar.classList.remove('active');
+                if (backdrop) backdrop.classList.remove('show');
+            }
+        });
+        sidebar.querySelectorAll('a.nav-link').forEach(function (a) {
+            a.addEventListener('click', function () {
+                if (window.innerWidth <= 768) {
+                    var href = a.getAttribute('href');
+                    if (href && href !== '#') {
+                        sidebar.classList.remove('active');
+                        if (backdrop) backdrop.classList.remove('show');
+                    }
                 }
             });
-            document.getElementById("sidebarToggle").addEventListener("click", function() {
-                document.getElementById("accordionSidebar").classList.toggle("d-none");
-            });
-        </script>
+        });
+        window.addEventListener('resize', function () {
+            if (isDesktop()) {
+                sidebar.classList.remove('active');
+                if (backdrop) backdrop.classList.remove('show');
+            }
+        });
+    })();
+</script>

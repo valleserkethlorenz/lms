@@ -1,0 +1,196 @@
+/* ==========================================================================
+   LMS floating toast notifications
+   --------------------------------------------------------------------------
+   Shared by every role (admin, organizer, committee, team representative and
+   the public pages). Loaded from assets/css/lms-toast.css and driven by
+   assets/js/lms-toast.js, which exposes window.Toast.
+
+   Design notes
+   ------------
+   * Neutral card surface with a coloured accent rail and a tinted icon chip,
+     so a toast stays readable above both the navy page heroes and the white
+     application canvas.
+   * Colour is carried by --lms-toast-accent / --lms-toast-tint, switched per
+     icon type through .lms-toast--success|error|warning|info|question.
+   * Every rule is scoped to .lms-toast-popup so ordinary SweetAlert2 dialogs
+     (confirmations, forms, loaders) keep their default look.
+   ========================================================================== */
+
+.lms-toast-popup {
+    --lms-toast-accent: #2f6fed;
+    --lms-toast-tint: #eaf1ff;
+
+    box-sizing: border-box;
+    min-width: 288px;
+    max-width: min(420px, calc(100vw - 26px));
+    padding: 14px 40px 16px 16px !important;
+    border: 1px solid rgba(9, 23, 60, .08) !important;
+    border-left: 4px solid var(--lms-toast-accent) !important;
+    border-radius: 14px !important;
+    background: #ffffff !important;
+    color: #0b1f3a !important;
+    box-shadow:
+        0 18px 38px -16px rgba(9, 23, 60, .38),
+        0 2px 8px rgba(9, 23, 60, .06) !important;
+    overflow: hidden !important;
+    position: relative !important;
+    font-family: 'Poppins', sans-serif !important;
+
+    /* Own the toast layout: icon on the left, message (+ optional detail line)
+       on the right. SweetAlert2 already renders the popup as a grid, so only
+       track sizing / placement is overridden and its show/hide logic is kept. */
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    align-items: center !important;
+    justify-items: start !important;
+    column-gap: 12px;
+    row-gap: 2px;
+}
+
+/* ---------- Type palette -------------------------------------------------- */
+.lms-toast--success {
+    --lms-toast-accent: #157f45;
+    --lms-toast-tint: #e7f6ee;
+}
+
+.lms-toast--error {
+    --lms-toast-accent: #c62f2f;
+    --lms-toast-tint: #fdeaea;
+}
+
+.lms-toast--warning {
+    --lms-toast-accent: #b45309;
+    --lms-toast-tint: #fdf1e0;
+}
+
+.lms-toast--info {
+    --lms-toast-accent: #2f6fed;
+    --lms-toast-tint: #eaf1ff;
+}
+
+.lms-toast--question {
+    --lms-toast-accent: #2f6fed;
+    --lms-toast-tint: #eaf1ff;
+}
+
+/* ---------- Icon chip ---------------------------------------------------- */
+.lms-toast-popup .lms-toast__icon {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    grid-column: 1 !important;
+    grid-row: 1 / span 2 !important;
+    align-self: center;
+    justify-self: start;
+    width: 34px;
+    height: 34px;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 10px !important;
+    background: var(--lms-toast-tint) !important;
+    color: var(--lms-toast-accent) !important;
+    font-size: 15px !important;
+    line-height: 1;
+}
+
+.lms-toast-popup .lms-toast__icon i::before {
+    line-height: 1;
+}
+
+/* ---------- Copy --------------------------------------------------------- */
+.lms-toast-popup .lms-toast__title {
+    margin: 0 !important;
+    padding: 0 !important;
+    flex: 1 1 auto;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    color: #0b1f3a !important;
+    font-family: 'Poppins', sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    line-height: 1.45 !important;
+    letter-spacing: -.01em;
+    text-align: left !important;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.lms-toast-popup .lms-toast__text {
+    margin: 0 !important;
+    padding: 0 !important;
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    color: #5b6b82 !important;
+    font-family: 'Poppins', sans-serif !important;
+    font-size: 12px !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+    text-align: left !important;
+    overflow-wrap: anywhere;
+}
+
+/* ---------- Timer + close button ----------------------------------------- */
+.lms-toast-popup .lms-toast__progress {
+    height: 3px !important;
+    background: var(--lms-toast-accent) !important;
+    opacity: .38;
+}
+
+.lms-toast-popup .swal2-timer-progress-bar-container {
+    position: absolute !important;
+    inset: auto 0 0 0 !important;
+    height: 3px !important;
+    border-radius: 0 !important;
+}
+
+.lms-toast-popup .lms-toast__close {
+    position: absolute !important;
+    top: 6px !important;
+    right: 8px !important;
+    width: 26px !important;
+    height: 26px !important;
+    border-radius: 8px;
+    color: #94a3b8 !important;
+    font-size: 17px !important;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.lms-toast-popup .lms-toast__close:hover,
+.lms-toast-popup .lms-toast__close:focus {
+    background: #f1f5f9 !important;
+    color: #0b1f3a !important;
+}
+
+/* ---------- Motion ------------------------------------------------------- */
+@keyframes lmsToastIn {
+    from { opacity: 0; transform: translateY(-10px) scale(.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.lms-toast-popup.swal2-show {
+    animation: lmsToastIn .28s cubic-bezier(.22, 1, .36, 1) both !important;
+}
+
+/* ---------- Small screens: full-width toast, top of the viewport --------- */
+@media (max-width: 575.98px) {
+    .swal2-container .lms-toast-popup {
+        width: calc(100vw - 24px);
+        min-width: 0;
+        max-width: none;
+        padding: 12px 38px 14px 14px !important;
+        border-radius: 12px !important;
+    }
+
+    .lms-toast-popup .lms-toast__icon {
+        width: 30px;
+        height: 30px;
+        font-size: 14px !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lms-toast-popup.swal2-show {
+        animation: none !important;
+    }
+}

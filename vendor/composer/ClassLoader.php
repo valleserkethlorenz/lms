@@ -46,7 +46,7 @@ class ClassLoader
     private static $includeFile;
 
     /** @var string|null */
-    private $assetsDir;
+    private $vendorDir;
 
     // PSR-4
     /**
@@ -101,11 +101,11 @@ class ClassLoader
     private static $registeredLoaders = array();
 
     /**
-     * @param string|null $assetsDir
+     * @param string|null $vendorDir
      */
-    public function __construct($assetsDir = null)
+    public function __construct($vendorDir = null)
     {
-        $this->assetsDir = $assetsDir;
+        $this->vendorDir = $vendorDir;
         self::initializeIncludeClosure();
     }
 
@@ -388,15 +388,15 @@ class ClassLoader
     {
         spl_autoload_register(array($this, 'loadClass'), true, $prepend);
 
-        if (null === $this->assetsDir) {
+        if (null === $this->vendorDir) {
             return;
         }
 
         if ($prepend) {
-            self::$registeredLoaders = array($this->assetsDir => $this) + self::$registeredLoaders;
+            self::$registeredLoaders = array($this->vendorDir => $this) + self::$registeredLoaders;
         } else {
-            unset(self::$registeredLoaders[$this->assetsDir]);
-            self::$registeredLoaders[$this->assetsDir] = $this;
+            unset(self::$registeredLoaders[$this->vendorDir]);
+            self::$registeredLoaders[$this->vendorDir] = $this;
         }
     }
 
@@ -409,8 +409,8 @@ class ClassLoader
     {
         spl_autoload_unregister(array($this, 'loadClass'));
 
-        if (null !== $this->assetsDir) {
-            unset(self::$registeredLoaders[$this->assetsDir]);
+        if (null !== $this->vendorDir) {
+            unset(self::$registeredLoaders[$this->vendorDir]);
         }
     }
 
@@ -475,7 +475,7 @@ class ClassLoader
     }
 
     /**
-     * Returns the currently registered loaders keyed by their corresponding assets directories.
+     * Returns the currently registered loaders keyed by their corresponding vendor directories.
      *
      * @return array<string, self>
      */
