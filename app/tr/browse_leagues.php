@@ -105,6 +105,8 @@ include 'includes/header.php';
   .browse-empty p{max-width:44ch;margin:0 auto 16px;font-size:.86rem;line-height:1.6}
   .browse-empty-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:8px;background:linear-gradient(135deg,#09173c,#1a3a7c);color:#fff!important;font-size:.82rem;font-weight:600;transition:transform .2s ease,box-shadow .2s ease}
   .browse-empty-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(9,23,60,.22)}
+  .league-result-count{margin-bottom:12px;color:#667085;font-size:.85rem}
+  .league-result-count.has-error{color:#b42318}
   @media (prefers-reduced-motion:reduce){
     .league-card,.league-image img,.league-card-hint,.league-image::before,.browse-empty-btn{transition:none!important}
     .league-card:hover{transform:none}
@@ -165,7 +167,8 @@ include 'includes/header.php';
         </form>
       </div>
     </aside>
-    <section class="col-12" aria-label="Available leagues"><div class="league-grid">
+    <div class="col-12 league-result-count" id="leagueResultsStatus" role="status" aria-live="polite" aria-atomic="true"></div>
+    <section class="col-12" aria-label="Available leagues"><div class="league-grid" id="leagueResults" aria-busy="false">
       <?php if($leagues):foreach($leagues as $league):
         $blImg=(string)($league['league_image']??'');
         if(StorageService::isCloudinary($blImg)){$imagePath=$blImg;}else{$imagePath='../../assets/uploads/'.basename($blImg);if($blImg===''||!is_file(__DIR__.'/../../assets/uploads/'.basename($blImg)))$imagePath='../../assets/images/default-league.svg';}
@@ -197,11 +200,53 @@ include 'includes/header.php';
 (function () {
   var form = document.querySelector('.browse-filter');
   var search = document.getElementById('leagueSearch');
-  var timer;
+  var results = document.querySelector('.league-grid');
+  var status = document.getElementById('leagueResultsStatus');
+  var timer = null;
+  var activeController = null;
+  var requestId = 0;
+
   function applyFilters() {
     clearTimeout(timer);
-    form.requestSubmit();
+    var currentRequestId = ++requestId;
+    if (activeController) activeController.abort();
+
+    var controller = new AbortController();
+    activeController = controller;
+    var requestUrl = new URL(form.action, window.location.href);
+    requestUrl.search = new URLSearchParams(new FormData(form)).toString();
+    results.setAttribute('aria-busy', 'true');
+    status.classList.remove('has-error');
+    status.textContent = 'Updating league results...';
+
+    fetch(requestUrl.toString(), { signal: controller.signal })
+      .then(function (response) {
+        if (!response.ok) throw new Error('League search request failed.');
+        return response.text();
+      })
+      .then(function (html) {
+        if (currentRequestId !== requestId) return;
+        var parsedPage = new DOMParser().parseFromString(html, 'text/html');
+        var updatedResults = parsedPage.querySelector('.league-grid');
+        if (!updatedResults) throw new Error('League results were not found in the response.');
+
+        results.innerHTML = updatedResults.innerHTML;
+        window.history.replaceState(window.history.state, '', requestUrl.pathname + requestUrl.search);
+        var count = results.querySelectorAll('.league-card').length;
+        status.textContent = count + (count === 1 ? ' league found.' : ' leagues found.');
+      })
+      .catch(function (error) {
+        if (error.name === 'AbortError' || currentRequestId !== requestId) return;
+        status.classList.add('has-error');
+        status.textContent = 'Unable to update league results. Please try again.';
+      })
+      .finally(function () {
+        if (currentRequestId !== requestId) return;
+        results.setAttribute('aria-busy', 'false');
+        activeController = null;
+      });
   }
+
   form.querySelectorAll('select').forEach(function (select) {
     select.addEventListener('change', applyFilters);
   });
@@ -209,8 +254,10 @@ include 'includes/header.php';
     clearTimeout(timer);
     timer = setTimeout(applyFilters, 600);
   });
-  form.addEventListener('submit', function () {
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
     clearTimeout(timer);
+    applyFilters();
   });
 })();
 </script>

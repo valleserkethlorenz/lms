@@ -253,6 +253,7 @@ include 'includes/header.php'; ?>
     .filter-mobile-toggle .toggle-icon { transition:transform .3s; }
     .filter-mobile-toggle[aria-expanded="true"] .toggle-icon { transform:rotate(180deg); }
     .league-result-count { color:#667085;font-size:.85rem; }
+    .league-result-count.has-error { color:#b42318; }
     .cols:has(.league-empty) { display:flex;flex-direction:column; }
     .league-card-grid:has(.league-empty) { flex:1;align-content:center; }
     .league-card-grid > .col-12:has(.league-empty) { grid-column:1/-1; }
@@ -298,8 +299,9 @@ include 'includes/bar.php';
                     </form>
                 </div>
             </aside>
+            <div class="league-result-count" id="leagueResultsStatus" role="status" aria-live="polite" aria-atomic="true"></div>
             <section aria-label="Available leagues">
-                    <div class="p-4 cols">
+                    <div class="p-4 cols" id="leagueResults" aria-busy="false">
                         
                         <div class="league-card-grid">
                             <?php if($filteredLeagues): foreach ($filteredLeagues as $league_row) {
@@ -355,11 +357,54 @@ include 'includes/bar.php';
     (function () {
         var form = document.querySelector('.browse-filter');
         var search = document.getElementById('leagueSearch');
-        var timer;
+        var results = document.querySelector('.league-card-grid');
+        var status = document.getElementById('leagueResultsStatus');
+        var timer = null;
+        var activeController = null;
+        var requestId = 0;
+
         function applyFilters() {
             clearTimeout(timer);
-            form.requestSubmit();
+            var currentRequestId = ++requestId;
+            if (activeController) activeController.abort();
+
+            var controller = new AbortController();
+            activeController = controller;
+            var requestUrl = new URL(form.action, window.location.href);
+            requestUrl.search = new URLSearchParams(new FormData(form)).toString();
+            var resultsContainer = document.getElementById('leagueResults');
+            resultsContainer.setAttribute('aria-busy', 'true');
+            status.classList.remove('has-error');
+            status.textContent = 'Updating league results...';
+
+            fetch(requestUrl.toString(), { signal: controller.signal })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('League search request failed.');
+                    return response.text();
+                })
+                .then(function (html) {
+                    if (currentRequestId !== requestId) return;
+                    var parsedPage = new DOMParser().parseFromString(html, 'text/html');
+                    var updatedResults = parsedPage.querySelector('.league-card-grid');
+                    if (!updatedResults) throw new Error('League results were not found in the response.');
+
+                    results.innerHTML = updatedResults.innerHTML;
+                    window.history.replaceState(window.history.state, '', requestUrl.pathname + requestUrl.search);
+                    var count = results.querySelectorAll('.featured-card').length;
+                    status.textContent = count + (count === 1 ? ' league found.' : ' leagues found.');
+                })
+                .catch(function (error) {
+                    if (error.name === 'AbortError' || currentRequestId !== requestId) return;
+                    status.classList.add('has-error');
+                    status.textContent = 'Unable to update league results. Please try again.';
+                })
+                .finally(function () {
+                    if (currentRequestId !== requestId) return;
+                    resultsContainer.setAttribute('aria-busy', 'false');
+                    activeController = null;
+                });
         }
+
         form.querySelectorAll('select').forEach(function (select) {
             select.addEventListener('change', applyFilters);
         });
@@ -367,8 +412,10 @@ include 'includes/bar.php';
             clearTimeout(timer);
             timer = setTimeout(applyFilters, 600);
         });
-        form.addEventListener('submit', function () {
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
             clearTimeout(timer);
+            applyFilters();
         });
     })();
 </script>
