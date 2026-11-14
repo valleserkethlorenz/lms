@@ -29,6 +29,15 @@ $notifCsrf = $notifCsrf ?? (function_exists('csrfToken') ? csrfToken() : (string
 .notif-loading{text-align:center;padding:40px 20px;color:#9ca3af}
 .notif-mark-btn{background:none;border:none;color:#3b82f6;font-size:11px;cursor:pointer;padding:0;margin-top:4px}
 .notif-mark-btn:hover{text-decoration:underline}
+@media(max-width:575.98px){
+    .popover{width:calc(100vw - 16px)!important;max-width:calc(100vw - 16px)!important}
+    .popover-body{max-height:calc(100vh - 140px);max-height:min(450px,calc(100dvh - 140px));overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+    .notif-popover-header{padding:12px 14px}
+    .notif-item{gap:10px;padding:12px}
+    .notif-icon{width:36px;height:36px;font-size:16px}
+    .notif-title{font-size:13px}
+    .notif-message{font-size:12px}
+}
 </style>
 <script>
 (function () {

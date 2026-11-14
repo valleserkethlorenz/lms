@@ -95,8 +95,9 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
-        #accordionSidebar { position:fixed; top:0; left:-250px; width:220px; z-index:1050; transition:left .3s ease-in-out; }
+        #accordionSidebar { position:fixed; top:0; left:-250px; width:220px; height:100vh; height:100dvh; overflow-y:auto; overscroll-behavior:contain; z-index:1050; transition:left .3s ease-in-out; }
         #accordionSidebar.active { left:0; }
+        #accordionSidebar #logout-item { position:sticky; bottom:0; z-index:1; flex-shrink:0; background:#09173c; }
         #accordionSidebar .nav-item { width:100%; }
         #accordionSidebar .nav-item .nav-link {
             display:flex !important;
@@ -121,7 +122,7 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
             line-height:1.3;
             white-space:nowrap;
         }
-        .topbar { position:fixed; top:0; left:0; right:0; min-height:70px; z-index:1040; }
+        .topbar { position:fixed; top:0; left:0; right:0; min-height:70px; z-index:1060; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw; }
         .topbar .user-role-text { display:none; }
     }

@@ -26,8 +26,9 @@ if (!empty($userId) && !empty($conn)) {
         .btn.d-lg-none { display:none !important; }
     }
     @media (max-width:768px) {
-        .sidebar { position:fixed; top:0; left:-250px; height:100%; width:220px; transition:left 0.3s ease-in-out; z-index:1050; }
+        .sidebar { position:fixed; top:0; left:-250px; height:100vh; height:100dvh; width:220px; overflow-y:auto; overscroll-behavior:contain; transition:left 0.3s ease-in-out; z-index:1050; }
         .sidebar.active { left:0; }
+        .sidebar #logout-item { position:sticky; bottom:0; z-index:1; flex-shrink:0; background:#09173c; }
         #accordionSidebar .nav-item { width:100%; }
         #accordionSidebar .nav-item .nav-link {
             display:flex !important;
@@ -82,7 +83,7 @@ if (!empty($userId) && !empty($conn)) {
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
-        .topbar { left:0 !important; right:0 !important; width:100% !important; }
+        .topbar { left:0 !important; right:0 !important; width:100% !important; z-index:1060 !important; }
         .topbar-toggle { flex:0 0 auto; margin:0 10px 0 0 !important; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
         .topbar .user-role-text { display:none; }
