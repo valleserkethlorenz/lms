@@ -209,7 +209,7 @@ include 'includes/header.php'; ?>
 
     .featured-meta {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px 10px;
         color: #657186;
         font-size: .7rem;
@@ -272,9 +272,13 @@ include 'includes/header.php'; ?>
     }
     @media(max-width:575.98px){
         .public-leagues-page{padding-top:72px !important}
-        .public-leagues-page > .card > .card-header{padding:8px 1.25rem 4px}
+        .public-leagues-page{padding-right:8px !important;padding-left:8px !important}
+        .public-leagues-page > .card > .card-header{padding:8px 8px 4px}
         .public-leagues-page > .card > .card-header h2{margin-bottom:0}
-        .public-leagues-page > .card > .card-body{padding-top:8px}
+        .public-leagues-page > .card > .card-body{padding:8px}
+        .public-leagues-page .cols{padding:12px !important}
+        .league-card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 !important}
+        .featured-meta span:nth-child(n+3){grid-column:1/-1;white-space:nowrap}
     }
 </style>
 <?php

@@ -83,7 +83,7 @@ include 'includes/header.php';
   .league-card-body{display:flex;flex-direction:column;padding:15px 16px 17px;flex:1 1 auto}
   .league-sport{font-size:.68rem;line-height:1.2;color:#2b69a4;font-weight:800;text-transform:uppercase;letter-spacing:.8px}
   .league-card h3{display:-webkit-box;overflow:hidden;margin:4px 0 10px;font-size:1rem;font-weight:750;line-height:1.35;color:#172033;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-clamp:2}
-  .league-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px 10px;font-size:.7rem;line-height:1.4;color:#657186}
+  .league-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px;font-size:.7rem;line-height:1.4;color:#657186}
   .league-meta span{display:inline-flex;align-items:center;gap:7px;min-width:0}
   .league-meta i{width:14px;flex:0 0 auto;color:#2b69a4}
   .league-meta .league-meta-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -114,7 +114,14 @@ include 'includes/header.php';
   }
   @media(max-width:991.98px){.browse-filter{position:static}.browse-page{padding:15px}.browse-shell{padding:18px}.filter-mobile-toggle{display:inline-flex}.filter-collapse{display:none}.filter-collapse.show{display:block}}
   @media(max-width:1199.98px){.league-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr))}}
-  @media(max-width:575.98px){.filter-field{flex:1 1 100%}.league-grid{grid-template-columns:minmax(0,1fr)}}
+  @media(max-width:575.98px){
+    .browse-page{padding:10px 8px 30px}
+    .browse-shell{padding:12px}
+    .filter-field{flex:1 1 100%}
+    .league-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .league-card-body{padding:12px 10px}
+    .league-meta > span:nth-child(n+3){grid-column:1/-1}
+  }
   @media(max-width:767.98px){
     .browse-page .row.g-4{--bs-gutter-y:.5rem}
     .browse-page aside[aria-label="League filters"]{margin-bottom:0}
