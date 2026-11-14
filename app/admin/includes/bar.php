@@ -41,10 +41,48 @@ $conn     = $conn ?? null;
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
-        /* Topbar spans the full width on mobile (sidebar is an off-canvas drawer) */
-        .topbar { left:0 !important; width:100% !important; }
+        .sidebar { height:100vh; height:100dvh; overflow-y:auto; overscroll-behavior:contain; }
+        .sidebar #logout-item { position:sticky; bottom:0; z-index:1; flex-shrink:0; background:#09173c; }
+        #accordionSidebar { top:70px; height:calc(100vh - 70px); height:calc(100dvh - 70px); }
+        #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; padding-top:8px; padding-bottom:8px; z-index:2; background:#09173c; }
+        #accordionSidebar .sidebar-logo { width:48px; height:48px; }
+        #accordionSidebar .nav-item { width:100%; }
+        #accordionSidebar .nav-item .nav-link {
+            display:flex !important;
+            align-items:center;
+            justify-content:flex-start !important;
+            width:100% !important;
+            min-height:44px;
+            padding:0.55rem 1rem !important;
+            text-align:left !important;
+        }
+        #accordionSidebar .nav-item .nav-link i {
+            display:inline-block;
+            flex:0 0 24px;
+            width:24px;
+            margin:0 12px 0 0 !important;
+            font-size:1rem;
+            text-align:center;
+        }
+        #accordionSidebar .nav-item .nav-link span {
+            display:inline !important;
+            font-size:13px !important;
+            line-height:1.3;
+            white-space:nowrap;
+        }
+        #accordionSidebar .nav-item#logout-item { padding-top:6px; padding-bottom:6px; }
+        #content-wrapper { margin-left:0 !important; width:100%; }
+        .topbar { left:0 !important; right:0 !important; width:100% !important; z-index:1060 !important; height:70px; min-height:70px; padding-top:0; padding-bottom:0; }
+        .topbar-toggle { flex:0 0 auto; margin:0 10px 0 0 !important; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
         .topbar .user-role-text { display:none; }
+    }
+    @media (max-width:575.98px) {
+        .topbar .topbar-title { display:none; }
+        .topbar .navbar-nav { flex:0 0 auto; flex-direction:row; gap:4px; margin-left:auto !important; }
+        .topbar .navbar-nav > .nav-item { margin:0 !important; }
+        .topbar .admin-profile { width:42px; height:42px; margin:0; padding:0 !important; border-radius:50%; justify-content:center; }
+        .topbar .admin-profile-label { display:none; }
     }
 </style>
 <div id="wrapper">
@@ -116,9 +154,9 @@ $conn     = $conn ?? null;
                 <ul class="navbar-nav ms-auto align-items-center">
                     
                     <li class="nav-item no-arrow">
-                        <div class="nav-link d-flex align-items-center" style="color:white;">
+                        <div class="nav-link d-flex align-items-center admin-profile" style="color:white;">
                             <i class="bi bi-person-circle" style="font-size:32px;color:white;"></i>
-                            <div class="ms-2 text-capitalize" style="color:white;font-size:13px;">
+                            <div class="ms-2 text-capitalize admin-profile-label" style="color:white;font-size:13px;">
                                 <b><?php echo htmlspecialchars($full); ?></b><br><span class="user-role-text">Admin</span>
                             </div>
                         </div>
