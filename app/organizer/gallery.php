@@ -135,7 +135,7 @@ include 'includes/header.php';
                                         <div class="upload-box-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                                         <div class="upload-box-text">Drag & drop images here or click to browse</div>
                                         <div class="upload-box-hint">JPG, PNG, WebP, or GIF &bull; Max 5 MB each &bull; Up to 10 images</div>
-                                        <input type="file" name="gallery_images[]" id="imageInput" class="form-control d-none" accept="image/*" multiple>
+                                        <input type="file" name="gallery_images[]" id="imageInput" class="form-control d-none" accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif" multiple>
                                     </div>
                                     <div class="image-preview-container" id="previewContainer"></div>
                                 </div>
@@ -188,7 +188,7 @@ include 'includes/header.php';
                             <div class="text-center">
                                 <div class="upload-box-icon"><i class="bi bi-cloud-arrow-up"></i></div>
                                 <div class="upload-box-text" style="margin-bottom:8px">Drag & drop or click to select</div>
-                                <input type="file" id="editImageInput" name="new_images[]" class="form-control d-none" accept="image/*" multiple>
+                                <input type="file" id="editImageInput" name="new_images[]" class="form-control d-none" accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif" multiple>
                                 <button type="button" class="btn btn-sm mt-2" style="background:#09173c;color:#fff;border:none;border-radius:3px;padding:6px 18px;font-weight:600" onclick="document.getElementById('editImageInput').click()">
                                     <i class="bi bi-folder-fill me-1"></i>Select Images
                                 </button>
@@ -226,6 +226,28 @@ include 'includes/header.php';
         const imageInput = document.getElementById('imageInput');
         const previewContainer = document.getElementById('previewContainer');
         let selectedFiles = [];
+        const supportedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+        function isSupportedImage(file) {
+            const extension = file.name.split('.').pop().toLowerCase();
+            const supportedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+            return supportedImageTypes.has(file.type) || (!file.type && supportedExtensions.includes(extension));
+        }
+
+        function clearFilePreviews(container) {
+            container.querySelectorAll('img[data-object-url]').forEach(img => URL.revokeObjectURL(img.dataset.objectUrl));
+            container.innerHTML = '';
+        }
+
+        function setFilePreview(img, file) {
+            const objectUrl = URL.createObjectURL(file);
+            img.dataset.objectUrl = objectUrl;
+            img.onerror = () => {
+                img.alt = 'Preview unavailable for ' + file.name;
+                img.classList.add('preview-unavailable');
+            };
+            img.src = objectUrl;
+        }
 
         // Delegation keeps removal working whenever the preview list is rebuilt.
         previewContainer.addEventListener('click', event => {
@@ -269,26 +291,31 @@ include 'includes/header.php';
         });
 
         function addFiles(fileList) {
+            const unsupportedFiles = [];
             Array.from(fileList).forEach(file => {
-                if (file.type.startsWith('image/') && selectedFiles.length < 10) selectedFiles.push(file);
+                if (!isSupportedImage(file)) {
+                    unsupportedFiles.push(file.name);
+                } else if (selectedFiles.length < 10) {
+                    selectedFiles.push(file);
+                }
             });
             updatePreview();
+            if (unsupportedFiles.length) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Unsupported image format',
+                    text: 'Only JPG, PNG, WebP, and GIF images can be uploaded. Unsupported files: ' + unsupportedFiles.join(', ')
+                });
+            }
         }
 
         function updatePreview() {
-            previewContainer.innerHTML = '';
+            clearFilePreviews(previewContainer);
             selectedFiles.forEach((file, index) => {
                 const preview = document.createElement('div');
                 preview.className = 'image-preview';
                 const img = document.createElement('img');
                 img.alt = '';
-                img.onload = function() { URL.revokeObjectURL(this.src); };
-                img.onerror = function() {
-                    URL.revokeObjectURL(this.src);
-                    this.style.background = '#e2e8f0';
-                    this.removeAttribute('src');
-                };
-                img.src = URL.createObjectURL(file);
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'remove-btn';
@@ -298,6 +325,7 @@ include 'includes/header.php';
                 preview.appendChild(img);
                 preview.appendChild(btn);
                 previewContainer.appendChild(preview);
+                setFilePreview(img, file);
             });
             if (selectedFiles.length) {
                 const countDiv = document.createElement('div');
@@ -314,7 +342,7 @@ include 'includes/header.php';
 
         document.getElementById('clearBtn').addEventListener('click', () => {
             selectedFiles = [];
-            previewContainer.innerHTML = '';
+            clearFilePreviews(previewContainer);
             document.getElementById('galleryUploadForm').reset();
         });
 
@@ -544,25 +572,32 @@ include 'includes/header.php';
         });
 
         function addEditFiles(fileList) {
-            Array.from(fileList).forEach(file => { if (file.type.startsWith('image/')) editNewFiles.push(file); });
+            const unsupportedFiles = [];
+            Array.from(fileList).forEach(file => {
+                if (isSupportedImage(file)) {
+                    editNewFiles.push(file);
+                } else {
+                    unsupportedFiles.push(file.name);
+                }
+            });
             updateEditNewPreview();
+            if (unsupportedFiles.length) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Unsupported image format',
+                    text: 'Only JPG, PNG, WebP, and GIF images can be uploaded. Unsupported files: ' + unsupportedFiles.join(', ')
+                });
+            }
         }
 
         function updateEditNewPreview() {
             const container = document.getElementById('editNewPreview');
-            container.innerHTML = '';
+            clearFilePreviews(container);
             editNewFiles.forEach((file, index) => {
                 const preview = document.createElement('div');
                 preview.className = 'image-preview';
                 const img = document.createElement('img');
                 img.alt = '';
-                img.onload = function() { URL.revokeObjectURL(this.src); };
-                img.onerror = function() {
-                    URL.revokeObjectURL(this.src);
-                    this.style.background = '#e2e8f0';
-                    this.removeAttribute('src');
-                };
-                img.src = URL.createObjectURL(file);
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'remove-btn';
@@ -573,6 +608,7 @@ include 'includes/header.php';
                 preview.appendChild(img);
                 preview.appendChild(btn);
                 container.appendChild(preview);
+                setFilePreview(img, file);
             });
         }
 
@@ -582,7 +618,7 @@ include 'includes/header.php';
             document.getElementById('editPostId').value = postId;
             document.getElementById('editTitle').value = title;
             document.getElementById('editDescription').value = description;
-            document.getElementById('editNewPreview').innerHTML = '';
+            clearFilePreviews(document.getElementById('editNewPreview'));
             document.getElementById('editRemovedImages').value = '';
 
             // Render existing images
