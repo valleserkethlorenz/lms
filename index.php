@@ -360,6 +360,8 @@ include 'includes/bar.php';
 
   /* ===== Featured Leagues Section ===== */
   .featured-card {
+    display: flex;
+    flex-direction: column;
     height: 100%;
     overflow: hidden;
     border: 1px solid #dfe6ef !important;
@@ -405,7 +407,12 @@ include 'includes/bar.php';
   .status-pill.league-status-upcoming { background: #6f42c1; }
   .status-pill.league-status-ended { background: #6c757d; }
 
-  .featured-body { padding: 20px; }
+  .featured-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    padding: 20px;
+  }
 
   .featured-sport {
     color: #2b69a4;
@@ -436,7 +443,7 @@ include 'includes/bar.php';
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-top: 20px;
+    margin-top: auto;
     padding-top: 15px;
     border-top: 1px solid #edf0f4;
   }

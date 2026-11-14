@@ -233,32 +233,33 @@ include 'includes/header.php'; ?>
         padding: 0;
     }
 
-    .compact-filter { position:sticky;top:105px;padding:0;border:1px solid #d8e1eb;border-radius:12px;background:#fff;overflow:hidden;box-shadow:0 4px 18px rgba(16,24,40,.05);transition:box-shadow .25s ease; }
-    .compact-filter:hover { box-shadow:0 6px 24px rgba(16,24,40,.09); }
-    .filter-panel-header { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;background:linear-gradient(135deg,#09173c 0%,#1a3a7c 100%);border-bottom:1px solid rgba(255,255,255,.12); }
-    .filter-panel-heading { display:flex;align-items:center;gap:10px;min-width:0; }
-    .filter-panel-icon { display:flex;align-items:center;justify-content:center;flex:0 0 36px;width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.13);color:#fff;font-size:1rem; }
-    .filter-panel-title { margin:0;color:#fff;font-size:.9rem;font-weight:700;letter-spacing:.2px; }
-    .filter-panel-count { flex:0 0 auto;padding:4px 10px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font-size:.7rem;font-weight:700; }
-    .filter-panel-count.has-filters { border-color:rgba(255,193,7,.35);background:rgba(255,193,7,.25); }
-    .filter-panel-body { padding:16px; }
-    .filter-panel-field { margin-bottom:14px; }
-    .filter-panel-field:last-of-type { margin-bottom:0; }
-    .filter-panel-field label { display:flex;align-items:center;gap:6px;margin-bottom:6px;color:#4b5c72;font-size:.7rem;font-weight:600;letter-spacing:.55px;text-transform:uppercase; }
-    .filter-panel-field label i { color:#8896a7;font-size:.78rem; }
-    .filter-panel-field .input-group { overflow:hidden;border:1.5px solid #d8e1eb;border-radius:10px;background:#f8fafc;transition:border-color .2s,box-shadow .2s; }
-    .filter-panel-field .input-group:focus-within { border-color:#1a3a7c;background:#fff;box-shadow:0 0 0 3px rgba(26,58,124,.1); }
-    .filter-panel-field .input-group-text { display:flex;min-width:36px;justify-content:center;padding:0 10px;border:0;border-right:1.5px solid #e4eaf1;background:transparent;color:#8896a7;font-size:.82rem; }
-    .filter-panel-field .form-control,.filter-panel-field .form-select { min-height:38px;padding:8px 10px;border:0;background:transparent;color:#1e293b!important;font-size:.78rem;box-shadow:none!important; }
-    .filter-panel-field .form-select { cursor:pointer; }
-    .filter-panel-field .form-control::placeholder { color:#a0aec0; }
+    .browse-filter { padding:0;border:1px solid #d8e1eb;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 4px 18px rgba(16,24,40,.05);transition:box-shadow .25s ease; }
+    .browse-filter:hover { box-shadow:0 6px 24px rgba(16,24,40,.09); }
+    .filter-body { display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;padding:18px; }
+    .filter-field { flex:1 1 180px;min-width:0;margin-bottom:0; }
+    .filter-field:has(#leagueSearch) { flex-grow:2; }
+    .filter-field label { display:flex;align-items:center;gap:6px;margin-bottom:6px;color:#4b5c72;font-size:.72rem;font-weight:600;letter-spacing:.6px;text-transform:uppercase; }
+    .filter-field label i { color:#8896a7;font-size:.8rem; }
+    .filter-field .input-group { overflow:hidden;border:1.5px solid #d8e1eb;border-radius:10px;background:#f8fafc;transition:border-color .2s,box-shadow .2s; }
+    .filter-field .input-group:focus-within { border-color:#1a3a7c;background:#fff;box-shadow:0 0 0 3px rgba(26,58,124,.1); }
+    .filter-field .input-group-text { display:flex;min-width:38px;justify-content:center;padding:0 12px;border:0;border-right:1.5px solid #e4eaf1;background:transparent;color:#8896a7;font-size:.85rem; }
+    .filter-field .input-group .form-control,.filter-field .input-group .form-select { padding:10px 12px;border:0;background:transparent;color:#1e293b!important;font-size:.82rem;box-shadow:none!important; }
+    .filter-field .form-select { cursor:pointer; }
+    .filter-field .form-control::placeholder { color:#a0aec0; }
+    .filter-mobile-toggle { display:none;width:100%;padding:12px 18px;border:0;border-radius:6px;margin-bottom:12px;background:linear-gradient(135deg,#09173c,#1a3a7c);color:#fff;font-size:.85rem;font-weight:600;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(9,23,60,.15); }
+    .filter-mobile-toggle:hover { color:#fff; }
+    .filter-count-badge { flex:0 0 auto;padding:4px 10px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.16);color:#fff;font-size:.7rem;font-weight:700; }
+    .filter-count-badge.has-filters { border-color:rgba(255,193,7,.35);background:rgba(255,193,7,.25); }
+    .filter-mobile-toggle .toggle-icon { transition:transform .3s; }
+    .filter-mobile-toggle[aria-expanded="true"] .toggle-icon { transform:rotate(180deg); }
     .league-result-count { color:#667085;font-size:.85rem; }
     .cols:has(.league-empty) { display:flex;flex-direction:column; }
     .league-card-grid:has(.league-empty) { flex:1;align-content:center; }
     .league-card-grid > .col-12:has(.league-empty) { grid-column:1/-1; }
     .league-empty { min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#667085; }
     @media(max-width:1199.98px){.league-card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-    @media(max-width:991.98px){.compact-filter{position:static}.cols{min-height:520px}.league-card-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr))}}
+    @media(max-width:991.98px){.cols{min-height:520px}.league-card-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr))}.filter-mobile-toggle{display:inline-flex}.filter-collapse{display:none}.filter-collapse.show{display:block}}
+    @media(max-width:575.98px){.filter-field{flex:1 1 100%}}
     @media(max-width:575.98px){.league-card-grid{grid-template-columns:minmax(0,1fr);padding:16px !important}}
 </style>
 <?php
@@ -272,32 +273,33 @@ include 'includes/bar.php';
             <h2 class="font-weight-bolder">Browse Leagues</h2>
         </div>
         <div class="card-body">
-            <div class="row align-items-start g-4">
-                <div class="col-xl-2 col-lg-3">
-                    <form class="compact-filter" method="get" action="leagues.php">
-                        <?php $activeFilterCount=(int)($filters['search']!=='')+(int)($filters['sport']!=='')+(int)($filters['status']!==''); ?>
-                        <div class="filter-panel-header">
-                            <div class="filter-panel-heading"><span class="filter-panel-icon"><i class="bi bi-funnel-fill"></i></span><h5 class="filter-panel-title">Filters</h5></div>
-                            <span class="filter-panel-count<?= $activeFilterCount>0?' has-filters':'' ?>"><?= $activeFilterCount ?></span>
-                        </div>
-                        <div class="filter-panel-body">
-                            <div class="filter-panel-field">
+            <?php $activeFilterCount=(int)($filters['search']!=='')+(int)($filters['sport']!=='')+(int)($filters['status']!==''); ?>
+            <aside class="mb-4" aria-label="League filters">
+                <button class="filter-mobile-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#filterCollapse" aria-expanded="false" aria-controls="filterCollapse">
+                    <i class="bi bi-funnel-fill"></i> Filters<?php if($activeFilterCount>0): ?> <span class="filter-count-badge has-filters ms-1"><?= $activeFilterCount ?> active</span><?php endif; ?>
+                    <i class="bi bi-chevron-down toggle-icon ms-auto"></i>
+                </button>
+                <div class="filter-collapse" id="filterCollapse">
+                    <form class="browse-filter" method="get" action="leagues.php">
+                        <div class="filter-body">
+                            <div class="filter-field">
                                 <label for="leagueSearch"><i class="bi bi-search"></i>Search</label>
                                 <div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input id="leagueSearch" name="search" class="form-control" value="<?= htmlspecialchars($filters['search']) ?>" placeholder="Search league name..."></div>
                             </div>
-                            <div class="filter-panel-field">
+                            <div class="filter-field">
                                 <label for="sportFilter"><i class="bi bi-trophy"></i>Sport</label>
                                 <div class="input-group"><span class="input-group-text"><i class="bi bi-trophy"></i></span><select id="sportFilter" name="sport" class="form-select"><option value="">All Sports</option><?php foreach($sportOptions as $sportOption): ?><option value="<?= htmlspecialchars($sportOption) ?>" <?= $filters['sport']===$sportOption?'selected':'' ?>><?= htmlspecialchars($sportOption) ?></option><?php endforeach; ?></select></div>
                             </div>
-                            <div class="filter-panel-field">
+                            <div class="filter-field">
                                 <label for="statusFilter"><i class="bi bi-activity"></i>Status</label>
                                 <div class="input-group"><span class="input-group-text"><i class="bi bi-activity"></i></span><select id="statusFilter" name="status" class="form-select"><option value="">All Statuses</option><?php foreach(['Upcoming','Open','Ongoing','Completed'] as $statusOption): ?><option value="<?= htmlspecialchars($statusOption) ?>" <?= $filters['status']===$statusOption?'selected':'' ?>><?= $statusOption ?></option><?php endforeach; ?></select></div>
                             </div>
                         </div>
                     </form>
                 </div>
-                <div class="col-xl-10 col-lg-9">
-                    <div class=" p-4 cols">
+            </aside>
+            <section aria-label="Available leagues">
+                    <div class="p-4 cols">
                         
                         <div class="league-card-grid">
                             <?php if($filteredLeagues): foreach ($filteredLeagues as $league_row) {
@@ -345,16 +347,13 @@ include 'includes/bar.php';
 
                         </div>
                     </div>
-
-                </div>
-
-            </div>
+            </section>
         </div>
     </div>
 </div>
 <script>
     (function () {
-        var form = document.querySelector('.compact-filter');
+        var form = document.querySelector('.browse-filter');
         var search = document.getElementById('leagueSearch');
         var timer;
         function applyFilters() {
