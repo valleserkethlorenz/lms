@@ -106,13 +106,23 @@ ServerSignature Off
     </FilesMatch>
 </IfModule>
 
-# Prevent hotlinking of images
+# Prevent hotlinking of user-uploaded images.
+# - Requests without a referer (direct visits, PDF renderers) are allowed.
+# - Same-site referers from localhost and Heroku (*.herokuapp.com) are allowed.
+# - Static UI assets (assets/images/logo.jpg, favicons, default-league.svg)
+#   are deliberately NOT covered: branding must never be blocked by a
+#   referer check when the app is served from a different hostname.
+# The previous rule hard-coded "localhost" and the placeholder
+# "yourdomain.com", so once deployed to Heroku Apache returned 403 for
+# every local jpg/png/svg - including the logo.
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteCond %{HTTP_REFERER} !^$
-    RewriteCond %{HTTP_REFERER} !^http(s)?://(www\.)?localhost [NC]
-    RewriteCond %{HTTP_REFERER} !^http(s)?://(www\.)?yourdomain.com [NC]
-    RewriteRule \.(jpg|jpeg|png|gif|webp|svg)$ - [F,NC]
+    RewriteCond %{HTTP_REFERER} !^https?://(?:www\.)?localhost(?::[0-9]+)?(?:/|$) [NC]
+    RewriteCond %{HTTP_REFERER} !^https?://(?:[a-z0-9-]+\.)*herokuapp\.com(?::[0-9]+)?(?:/|$) [NC]
+    # Serving from a custom domain? Add an allow-list line for it here:
+    # RewriteCond %{HTTP_REFERER} !^https?://(?:www\.)?yourdomain\.com(?::[0-9]+)?(?:/|$) [NC]
+    RewriteRule ^assets/uploads/.*\.(jpg|jpeg|png|gif|webp|svg)$ - [F,NC]
 </IfModule>
 
 # Enable compression
