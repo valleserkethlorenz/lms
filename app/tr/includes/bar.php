@@ -28,6 +28,30 @@ if (!empty($userId) && !empty($conn)) {
     @media (max-width:768px) {
         .sidebar { position:fixed; top:0; left:-250px; height:100%; width:220px; transition:left 0.3s ease-in-out; z-index:1050; }
         .sidebar.active { left:0; }
+        #accordionSidebar .nav-item { width:100%; }
+        #accordionSidebar .nav-item .nav-link {
+            display:flex !important;
+            align-items:center;
+            justify-content:flex-start !important;
+            width:100% !important;
+            min-height:52px;
+            padding:0.85rem 1rem !important;
+            text-align:left !important;
+        }
+        #accordionSidebar .nav-item .nav-link i {
+            display:inline-block;
+            flex:0 0 24px;
+            width:24px;
+            margin:0 12px 0 0 !important;
+            font-size:1rem;
+            text-align:center;
+        }
+        #accordionSidebar .nav-item .nav-link span {
+            display:inline !important;
+            font-size:13px !important;
+            line-height:1.3;
+            white-space:nowrap;
+        }
         #content-wrapper { margin-left:0 !important; width:100%; }
     }
     #accordionSidebar { display:flex; flex-direction:column; height:100vh; padding-top:0.5rem; }
@@ -39,6 +63,7 @@ if (!empty($userId) && !empty($conn)) {
     .role-notification-link:hover { background:rgba(255,255,255,.1); }
     .role-notification-link .bi-bell-fill { display:block; font-size:24px; line-height:1; }
     .role-notification-badge { position:absolute; top:2px; right:0; display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 5px; border:2px solid #09173c; border-radius:4px; background:#dc3545; color:#fff; font-size:10px; font-weight:700; line-height:1; pointer-events:none; z-index:2; }
+    .account-link .account-menu-label { margin-left:.5rem; color:#fff; font-size:13px; letter-spacing:normal; text-align:left; white-space:nowrap; }
     /* ── Collapsible sidebar (mini rail on desktop, drawer on mobile) ── */
     #accordionSidebar, #content-wrapper, .topbar { transition: left .25s ease, width .25s ease, margin-left .25s ease; }
     .lms-sidebar-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1045; display:none; }
@@ -57,8 +82,19 @@ if (!empty($userId) && !empty($conn)) {
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
+        .topbar { left:0 !important; right:0 !important; width:100% !important; }
+        .topbar-toggle { flex:0 0 auto; margin:0 10px 0 0 !important; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
         .topbar .user-role-text { display:none; }
+    }
+    @media (max-width:575.98px) {
+        .topbar .topbar-title { display:none; }
+        .topbar .navbar-nav { flex:0 0 auto; flex-direction:row; gap:4px; margin-left:auto !important; }
+        .topbar .navbar-nav > .nav-item { margin:0 !important; }
+        .topbar .role-notification-link,
+        .topbar .account-link { width:42px; height:42px; margin:0; }
+        .topbar .account-link { display:inline-flex; align-items:center; justify-content:center; padding:0 !important; }
+        .topbar .account-link .account-menu-label { display:none; }
     }
 </style>
 <div id="wrapper">
@@ -115,12 +151,10 @@ if (!empty($userId) && !empty($conn)) {
                         </button>
                     </li>
                     <li class="nav-item no-arrow">
-                        <div class="nav-link d-flex align-items-center" style="color:white;">
+                        <a class="nav-link text-white account-link" href="account.php" aria-label="My Account">
                             <i class="bi bi-person-circle" style="font-size:32px;color:white;"></i>
-                            <div class="ms-2 text-capitalize" style="color:white;font-size:13px;">
-                                <b><?php echo htmlspecialchars($full); ?></b><br><span class="user-role-text">Team Representative</span>
-                            </div>
-                        </div>
+                            <span class="account-menu-label"><b><?= htmlspecialchars($full, ENT_QUOTES, 'UTF-8') ?></b><br><span class="user-role-text">Team Representative</span></span>
+                        </a>
                     </li>
                 </ul>
             </nav>

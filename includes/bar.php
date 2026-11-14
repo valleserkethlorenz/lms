@@ -75,6 +75,65 @@ $isAuthenticated = $userId > 0 && in_array($userRole, [1, 2, 3, 4], true);
     font-size: 14px;
   }
 
+  @media (max-width: 991.98px) {
+    .dashboard-header .navbar .container-fluid {
+      flex-wrap: wrap;
+    }
+
+    .dashboard-header .navbar-brand {
+      flex: 1 1 0;
+      min-width: 0;
+      margin-right: 0;
+    }
+
+    .dashboard-header #publicNavbar {
+      flex-basis: 100%;
+      width: 100%;
+    }
+
+    .dashboard-header #publicNavbar > div {
+      align-items: stretch !important;
+      flex-direction: column;
+      gap: 2px;
+      padding: 8px 0 10px;
+    }
+
+    .dashboard-header #publicNavbar .nav-link {
+      display: block;
+      padding: 10px 12px;
+      border-radius: 6px;
+    }
+
+    .dashboard-header #publicNavbar .nav-link::after {
+      display: none;
+    }
+
+    .dashboard-header #publicNavbar .nav-link.active {
+      background: rgba(255, 255, 255, .1);
+    }
+
+    .dashboard-header #publicNavbar .btn-login {
+      align-self: flex-start;
+      margin: 8px 0 0 !important;
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    .dashboard-header .navbar-brand img {
+      width: 34px !important;
+      height: 34px !important;
+      margin: 4px !important;
+    }
+
+    .dashboard-header .brand-text h5 {
+      font-size: 12px;
+    }
+
+    .dashboard-header .brand-text p {
+      font-size: 10px;
+    }
+  }
+
 </style>
 
 
@@ -83,6 +142,10 @@ $isAuthenticated = $userId > 0 && in_array($userRole, [1, 2, 3, 4], true);
     <nav class="navbar navbar-expand-lg navbar-dark fixed-top mb-4" style="background-color:#09173c; padding-top:4px; padding-bottom:4px;">
       <div class="container-fluid">
 
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#publicNavbar" aria-controls="publicNavbar" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
         <a class="navbar-brand" style="color:white; font-size:14px;">
           <img src="assets\images\logo.jpg" alt="CSDP Logo" class="d-inline-block align-middle m-2" style="width:40px;height:40px;border-radius:50%;object-fit:cover;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.18);">
           <div class="brand-text">
@@ -90,10 +153,6 @@ $isAuthenticated = $userId > 0 && in_array($userRole, [1, 2, 3, 4], true);
             <p>League Management System</p>
           </div>
         </a>
-
-        <button class="navbar-toggler ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#publicNavbar" aria-controls="publicNavbar" aria-expanded="false" aria-label="Toggle navigation">
-          <span class="navbar-toggler-icon"></span>
-        </button>
 
         <?php $page = basename($_SERVER['PHP_SELF']); ?>
                 <?php

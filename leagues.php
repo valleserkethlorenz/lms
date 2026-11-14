@@ -262,13 +262,27 @@ include 'includes/header.php'; ?>
     @media(max-width:991.98px){.cols{min-height:520px}.league-card-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr))}.filter-mobile-toggle{display:inline-flex}.filter-collapse{display:none}.filter-collapse.show{display:block}}
     @media(max-width:575.98px){.filter-field{flex:1 1 100%}}
     @media(max-width:575.98px){.league-card-grid{grid-template-columns:minmax(0,1fr);padding:16px !important}}
+    @media(max-width:767.98px){
+        aside[aria-label="League filters"]{margin-bottom:8px !important}
+        .filter-mobile-toggle{margin-bottom:0}
+        .filter-mobile-toggle[aria-expanded="true"]{margin-bottom:8px}
+        .league-result-count:empty{display:none}
+        #leagueResults{padding-top:12px !important}
+        #leagueResults .league-card-grid{padding-top:0 !important}
+    }
+    @media(max-width:575.98px){
+        .public-leagues-page{padding-top:72px !important}
+        .public-leagues-page > .card > .card-header{padding:8px 1.25rem 4px}
+        .public-leagues-page > .card > .card-header h2{margin-bottom:0}
+        .public-leagues-page > .card > .card-body{padding-top:8px}
+    }
 </style>
 <?php
 include 'includes/bar.php';
 
 ?>
 
-<div class="container-fluid" style="padding-top: 80px;">
+<div class="container-fluid public-leagues-page" style="padding-top: 80px;">
     <div class="card bg-transparent border-0">
         <div class="card-header bg-transparent border-0">
             <h2 class="font-weight-bolder">Browse Leagues</h2>

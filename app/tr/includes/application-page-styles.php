@@ -122,8 +122,35 @@
 @media(max-width:767px) {
 .tr-applications .activity-section { background:transparent; }
 .tr-applications .activity-header { background:#fff; padding:16px; }
-.tr-applications .activity-table tbody tr.app-row { border-radius:4px; box-shadow:none; margin:12px; }
+.tr-applications .activity-table tbody tr.app-row {
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:end;
+    border-radius:8px;
+    box-shadow:none;
+    margin:12px;
+}
 .tr-applications .activity-table tbody tr.app-row td { padding:10px 14px; }
+.tr-applications .activity-table tbody tr.app-row td[data-label="League"],
+.tr-applications .activity-table tbody tr.app-row td[data-label="Team"] { grid-column:1 / -1; }
+.tr-applications .activity-table tbody tr.app-row td[data-label="Status"] { grid-column:1; }
+.tr-applications .activity-table tbody tr.app-row td.app-cell-actions {
+    grid-column:2;
+    justify-self:end;
+    align-self:end;
+    width:auto;
+    padding:10px 14px;
+}
+.tr-applications .app-cell-actions .app-actions { justify-content:flex-end; }
+.tr-applications .app-cell-actions .action-btn { min-height:44px; }
+.tr-applications .app-league-name { white-space:normal; overflow-wrap:anywhere; }
 .tr-applications .app-tabs { gap:6px; }
+}
+@media(max-width:399.98px) {
+    .tr-applications .league-page { padding:8px; }
+    .tr-applications .activity-header { padding:14px; }
+    .tr-applications .activity-table tbody tr.app-row { margin:8px; }
+    .tr-applications .activity-table tbody tr.app-row td { padding:9px 12px; }
+    .tr-applications .activity-table tbody tr.app-row td.app-cell-actions { padding:9px 12px; }
 }
 </style>

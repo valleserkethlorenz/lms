@@ -53,7 +53,25 @@
         #signUp .signup-captcha-body{flex:1;min-width:0}
         #signUp .signup-captcha-label{display:block;font-size:13px;font-weight:700;color:#0c4a6e;margin:0 0 2px;letter-spacing:.3px}
         #signUp .signup-captcha-hint{font-size:11.5px;color:#0369a1;margin:0 0 10px;font-weight:500}
-        #signUp .signup-captcha-body > div{transform:scale(.92);transform-origin:top left}
+        #signUp .signup-captcha-widget{display:flex;justify-content:center;width:100%}
+
+        @media(max-width:575.98px){
+            #signUp .modal-dialog{display:flex;align-items:stretch;width:calc(100% - 2rem);max-width:none;height:calc(100vh - 1rem);height:calc(100dvh - 1rem);margin:.5rem auto}
+            #signUp .modal-content{display:flex;flex-direction:column;height:100%;max-height:calc(100vh - 1rem);max-height:calc(100dvh - 1rem)}
+            #signUp .modal-header{flex:0 0 auto;padding:16px 18px 14px}
+            #signUp .signup-logo-circle{width:48px;height:48px;margin-bottom:6px}
+            #signUp .modal-title{font-size:15px;line-height:1.3}
+            #signUp .signup-subtitle{font-size:11px}
+            #signUp .modal-body{flex:1 1 auto;min-height:0;max-height:none;padding:16px;overflow-y:auto;overscroll-behavior:contain}
+            #signUp .modal-footer{flex:0 0 auto;padding:10px 16px;gap:8px}
+            #signUp .btn-signup-close,#signUp .btn-signup-submit{padding:9px 16px;font-size:13px}
+            #signUp .signup-captcha-card{flex-direction:column;align-items:center;gap:10px;padding:14px}
+            #signUp .signup-captcha-body{width:100%;text-align:center}
+        }
+        @media(max-width:380px){
+            #signUp .modal-footer{flex-direction:column-reverse;align-items:stretch}
+            #signUp .modal-footer .btn{width:100%}
+        }
         
         /* Login Captcha Card Styles */
         #loginModal .login-captcha-card{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:1.5px solid #fcd34d;border-radius:10px;margin-top:16px;box-shadow:0 2px 8px rgba(245,158,11,.1)}
@@ -61,7 +79,11 @@
         #loginModal .login-captcha-body{flex:1;min-width:0}
         #loginModal .login-captcha-label{display:block;font-size:12.5px;font-weight:700;color:#78350f;margin:0 0 2px;letter-spacing:.3px}
         #loginModal .login-captcha-hint{font-size:11px;color:#92400e;margin:0 0 8px;font-weight:500}
-        #loginModal .login-captcha-body > div{transform:scale(.88);transform-origin:top left}
+        #loginModal .login-captcha-widget{display:flex;justify-content:center;width:100%}
+        @media(max-width:575.98px){
+            #loginModal .login-captcha-card{flex-direction:column;align-items:center}
+            #loginModal .login-captcha-body{width:100%;text-align:center}
+        }
     </style>
    <div class="modal fade" id="signUp" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="signUp" aria-hidden="true">
        <div class="modal-dialog">
@@ -71,8 +93,7 @@
                        <div class="signup-logo-circle">
                            <img src="assets/images/logo.jpg" alt="CSDP Logo">
                        </div>
-                       <h5 class="modal-title">Create Team Representative Account</h5>
-                       <div class="signup-subtitle">Register to manage your team and leagues</div>
+                       <h5 class="modal-title">Register as Team Representative</h5>
                    </div>
                </div>
                <div class="modal-body">
@@ -199,7 +220,9 @@
                                 <div class="signup-captcha-body">
                                     <label class="signup-captcha-label">Security Verification</label>
                                     <p class="signup-captcha-hint">Please verify you're not a robot</p>
-                                    <div id="recaptcha-signup"></div>
+                                    <div class="signup-captcha-widget">
+                                        <div id="recaptcha-signup"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -281,7 +304,9 @@
                             <div class="login-captcha-body">
                                 <label class="login-captcha-label">Security Verification</label>
                                 <p class="login-captcha-hint">Please verify you're not a robot</p>
-                                <div id="recaptcha-login-modal"></div>
+                                <div class="login-captcha-widget">
+                                    <div id="recaptcha-login-modal"></div>
+                                </div>
                             </div>
                         </div>
                        </div>
@@ -302,6 +327,9 @@
        // Track if widgets are already rendered
        var loginModalRendered = false;
        var signupRendered = false;
+       function getRecaptchaSize() {
+           return window.matchMedia && window.matchMedia('(max-width: 575.98px)').matches ? 'compact' : 'normal';
+       }
 
        // Render reCAPTCHA for login modal (only once)
        function renderRecaptchaLoginModal() {
@@ -316,7 +344,8 @@
                try {
                    recaptchaIds.loginModal = grecaptcha.render('recaptcha-login-modal', {
                        sitekey: '6LdzCKMtAAAAALZOBzK__d-Ow6iuZAWNZtjBMUDT',
-                       theme: 'light'
+                       theme: 'light',
+                       size: getRecaptchaSize()
                    });
                    loginModalRendered = true;
                    console.log('reCAPTCHA loginModal rendered, ID:', recaptchaIds.loginModal);
@@ -339,7 +368,8 @@
                try {
                    recaptchaIds.signup = grecaptcha.render('recaptcha-signup', {
                        sitekey: '6LdzCKMtAAAAALZOBzK__d-Ow6iuZAWNZtjBMUDT',
-                       theme: 'light'
+                       theme: 'light',
+                       size: getRecaptchaSize()
                    });
                    signupRendered = true;
                    console.log('reCAPTCHA signup rendered, ID:', recaptchaIds.signup);

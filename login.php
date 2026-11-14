@@ -75,7 +75,10 @@ $url = $_GET['page'] ?? null;
     .btn-primary{background:var(--primary);border:none;color:#fff;width:100%;font-weight:600;padding:12px;border-radius:8px}
     .btn-primary:hover{background:#07305a}
 
-    .muted-link{color:#64748b;font-size:13px}
+    .login-secondary-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+    .login-secondary-link{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;min-height:42px;padding:8px 10px;border:1px solid #dfe6ef;border-radius:8px;background:#f8fafc;color:#53617a;font-size:12px;font-weight:600;line-height:1.2;text-align:center;text-decoration:none}
+    .login-secondary-link:hover{border-color:#cbd9ee;background:#eef4ff;color:var(--primary);text-decoration:none}
+    .login-secondary-link i{flex:0 0 auto;font-size:13px}
 
     #result{color:#dc2626;margin-top:8px}
 
@@ -117,7 +120,14 @@ $url = $_GET['page'] ?? null;
     .captcha-card-body{flex:1;min-width:0}
     .captcha-card-label{display:block;font-size:12.5px;font-weight:700;color:#312e81;margin:0 0 2px;letter-spacing:.3px}
     .captcha-card-hint{font-size:11px;color:#4338ca;margin:0 0 8px;font-weight:500}
-    .captcha-card-body > div{transform:scale(.88);transform-origin:top left}
+    .captcha-widget{display:flex;justify-content:center;width:100%}
+    #recaptcha-login{width:304px;transform:scale(.88);transform-origin:top center}
+    @media (max-width:576px){
+        .captcha-card{flex-direction:column;align-items:center}
+        .captcha-card-body{width:100%;text-align:center}
+        #recaptcha-login{transform:scale(.82)}
+    }
+    @media (max-width:360px){#recaptcha-login{transform:scale(.72)}}
     @media (max-width:576px){.back-btn{top:12px;left:12px;padding:6px 10px}}
 </style>
 
@@ -160,15 +170,17 @@ $url = $_GET['page'] ?? null;
                     <div class="captcha-card-body">
                         <label class="captcha-card-label">Security Verification</label>
                         <p class="captcha-card-hint">Please verify you're not a robot</p>
-                        <div id="recaptcha-login"></div>
+                        <div class="captcha-widget">
+                            <div id="recaptcha-login"></div>
+                        </div>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary mb-2">Login</button>
+                <button type="submit" class="btn btn-primary">Login</button>
             </form>
 
-            <div class="d-flex justify-content-between align-items-center mt-2">
-                <a class="muted-link" data-bs-toggle="modal" data-bs-target="#signUp" href="#">Don't have an account? Create one</a>
-                <a class="muted-link" href="forgot-password.php">Forgot password?</a>
+            <div class="login-secondary-actions">
+                <a class="login-secondary-link" data-bs-toggle="modal" data-bs-target="#signUp" href="#"><i class="bi bi-person-plus"></i><span>Create account</span></a>
+                <a class="login-secondary-link" href="forgot-password.php"><i class="bi bi-key"></i><span>Forgot password</span></a>
             </div>
             <div id="result"></div>
         </div>

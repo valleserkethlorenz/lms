@@ -115,6 +115,13 @@ include 'includes/header.php';
   @media(max-width:991.98px){.browse-filter{position:static}.browse-page{padding:15px}.browse-shell{padding:18px}.filter-mobile-toggle{display:inline-flex}.filter-collapse{display:none}.filter-collapse.show{display:block}}
   @media(max-width:1199.98px){.league-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr))}}
   @media(max-width:575.98px){.filter-field{flex:1 1 100%}.league-grid{grid-template-columns:minmax(0,1fr)}}
+  @media(max-width:767.98px){
+    .browse-page .row.g-4{--bs-gutter-y:.5rem}
+    .browse-page aside[aria-label="League filters"]{margin-bottom:0}
+    .browse-page .filter-mobile-toggle{margin-bottom:0}
+    .browse-page .filter-mobile-toggle[aria-expanded="true"]{margin-bottom:8px}
+    .browse-page .league-result-count:empty{display:none}
+  }
 </style>
 <body id="page-top" class="body">
 <?php include 'includes/bar.php'; ?>

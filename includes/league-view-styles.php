@@ -37,12 +37,8 @@
        The body container owns the page's bottom breathing room instead. */
     .lms-league-page ~ .lp-page { padding-bottom:40px; }
     @media (max-width:767.98px) {
+        .lms-league-page { padding-top:76px; }
         .lms-league-page ~ .lp-page { padding-bottom:28px; }
-    }
-    /* Under ~480px the navbar brand fills the row and Bootstrap wraps the
-       hamburger onto a second line, so the fixed header grows to ~114px. */
-    @media (max-width:479.98px) {
-        .lms-league-page { padding-top:126px; }
     }
 
     /* ---------- Breadcrumb ------------------------------------------------- */
