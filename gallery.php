@@ -566,7 +566,7 @@ include 'includes/bar.php';
     <div class="gallery-grid-wrap">
       <?php if($publicPosts): ?><div class="row g-4" id="galleryGrid">
         <?php foreach($publicPosts as $post): $visibleImages=array_slice($post['images'],0,3);$countClass=count($visibleImages)===1?'count-1':(count($visibleImages)===2?'count-2':'count-many'); ?>
-        <div class="col-4 gallery-entry"
+        <div class="col-6 col-md-4 gallery-entry"
           data-title="<?= htmlspecialchars(mb_strtolower($post['title'].' '.$post['description']),ENT_QUOTES,'UTF-8') ?>"
           data-images="<?= htmlspecialchars(json_encode(array_map(fn($fn)=>StorageService::isCloudinary($fn)?$fn:(is_file(__DIR__.'/assets/uploads/'.rawurlencode($fn))?'assets/uploads/'.rawurlencode($fn):'assets/images/default-league.svg'),$post['images'])),ENT_QUOTES,'UTF-8') ?>">
           <article class="gallery-collection">

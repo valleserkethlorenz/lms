@@ -62,5 +62,33 @@
     .organizer-leagues .league-status-filter { width:100%; }
     .organizer-leagues .league-status-btn { flex:1; padding:10px; }
 }
+@media(max-width:767.98px) {
+    .organizer-leagues .league-table-wrapper { overflow-x:hidden; }
+    .organizer-leagues #organizeTable { table-layout:fixed; }
+    .organizer-leagues #organizeTable thead th:nth-child(1),
+    .organizer-leagues #organizeTable thead th:nth-child(3),
+    .organizer-leagues #organizeTable thead th:nth-child(4),
+    .organizer-leagues #organizeTable thead th:nth-child(5),
+    .organizer-leagues #organizeTable thead th:nth-child(7),
+    .organizer-leagues #organizeTable tbody td:nth-child(1),
+    .organizer-leagues #organizeTable tbody td:nth-child(3),
+    .organizer-leagues #organizeTable tbody td:nth-child(4),
+    .organizer-leagues #organizeTable tbody td:nth-child(5),
+    .organizer-leagues #organizeTable tbody td:nth-child(7) { display:none; }
+    .organizer-leagues #organizeTable thead th:nth-child(2),
+    .organizer-leagues #organizeTable tbody td:nth-child(2) { width:52%; min-width:0; }
+    .organizer-leagues #organizeTable thead th:nth-child(6),
+    .organizer-leagues #organizeTable tbody td:nth-child(6) { width:24%; }
+    .organizer-leagues #organizeTable thead th:nth-child(8),
+    .organizer-leagues #organizeTable tbody td:nth-child(8) { width:24%; }
+    .organizer-leagues #organizeTable thead th,
+    .organizer-leagues #organizeTable tbody td { padding:12px 8px; vertical-align:middle; }
+    .organizer-leagues #organizeTable tbody td:nth-child(2) { overflow-wrap:anywhere; }
+    .organizer-leagues #organizeTable tbody td:nth-child(6) .badge { white-space:normal; line-height:1.2; text-align:center; }
+    .organizer-leagues .league-action-column { min-width:0; }
+    .organizer-leagues .league-actions { gap:4px; flex-wrap:wrap; justify-content:center; }
+    .organizer-leagues .league-icon-btn { width:30px; height:30px; }
+    .organizer-leagues .league-setup-chip { margin:6px 0 0; }
+}
 @media(prefers-reduced-motion:reduce) { .organizer-leagues .dash-animate { animation:none; } }
 </style>

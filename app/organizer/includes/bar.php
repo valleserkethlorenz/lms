@@ -25,11 +25,54 @@ if (!empty($userId) && !empty($conn)) {
         .btn.d-lg-none { display:none !important; }
     }
     @media (max-width:768px) {
-        .sidebar { position:fixed; top:0; left:-250px; height:100%; width:220px; transition:left 0.3s ease-in-out; z-index:1050; }
+        .sidebar { position:fixed; top:0; left:-250px; height:100vh; height:100dvh; width:220px; overflow:hidden; transition:left 0.3s ease-in-out; z-index:1050; }
         .sidebar.active { left:0; }
+        #accordionSidebar .nav-item { width:100%; }
+        #accordionSidebar .nav-item > .nav-link,
+        #accordionSidebar #logout-item .nav-link {
+            display:flex !important;
+            align-items:center;
+            justify-content:flex-start !important;
+            width:100% !important;
+            min-height:44px;
+            padding:0.55rem 1rem !important;
+            text-align:left !important;
+        }
+        #accordionSidebar .nav-item > .nav-link > i:first-child,
+        #accordionSidebar #logout-item .nav-link > i {
+            display:inline-block;
+            flex:0 0 24px;
+            width:24px;
+            margin:0 12px 0 0 !important;
+            font-size:1rem;
+            text-align:center;
+        }
+        #accordionSidebar .nav-item > .nav-link > span,
+        #accordionSidebar #logout-item .nav-link span {
+            display:inline !important;
+            font-size:13px !important;
+            line-height:1.3;
+            white-space:nowrap;
+        }
+        #accordionSidebar .nav-item > .nav-link .caret-icon { flex:0 0 auto; margin:0 0 0 auto !important; }
+        #accordionSidebar .settings-submenu { margin-left:36px; padding-left:0; }
+        #accordionSidebar .settings-submenu .nav-link {
+            display:flex !important;
+            align-items:center;
+            width:100% !important;
+            min-height:38px;
+            margin-right:0;
+            padding:0.45rem 0.75rem !important;
+            text-align:left !important;
+        }
+        #accordionSidebar .settings-submenu .nav-link i {
+            flex:0 0 20px;
+            width:20px;
+            margin:0 10px 0 0 !important;
+        }
         #content-wrapper { margin-left:0 !important; width:100%; }
     }
-    #accordionSidebar { display:flex; flex-direction:column; height:100vh; padding-top:0.5rem; overflow:hidden; }
+    #accordionSidebar { display:flex; flex-direction:column; height:100vh; padding-top:0.5rem; }
     #accordionSidebar .nav-item#logout-item { margin-top:auto; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; padding-bottom:12px; }
     .sidebar-logo-wrap { padding-top:16px; padding-bottom:12px; }
     .sidebar-logo { width:64px; height:64px; border-radius:50%; overflow:hidden; margin:0 auto; box-shadow:0 4px 12px rgba(0,0,0,0.18); }
@@ -94,9 +137,31 @@ if (!empty($userId) && !empty($conn)) {
     }
     @media (max-width:768px) {
         /* Topbar spans the full width on mobile (sidebar is an off-canvas drawer) */
-        .topbar { left:0 !important; width:100% !important; }
+        #accordionSidebar { top:70px; height:calc(100vh - 70px); height:calc(100dvh - 70px); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; }
+        #accordionSidebar .sidebar-logo-wrap { padding-top:4px; padding-bottom:4px; }
+        #accordionSidebar .sidebar-logo { width:40px; height:40px; }
+        #accordionSidebar .nav-item { flex:0 0 auto; }
+        #accordionSidebar .nav-item > .nav-link,
+        #accordionSidebar #logout-item .nav-link { min-height:36px; padding:0.3rem 0.75rem !important; }
+        #accordionSidebar .nav-item > .nav-link > i:first-child,
+        #accordionSidebar #logout-item .nav-link > i { flex-basis:20px; width:20px; margin-right:8px !important; font-size:0.9rem; }
+        #accordionSidebar .nav-item > .nav-link > span,
+        #accordionSidebar #logout-item .nav-link span { font-size:12px !important; }
+        #accordionSidebar .settings-submenu { margin-left:28px; }
+        #accordionSidebar .settings-submenu .nav-link { min-height:30px; padding:0.2rem 0.5rem !important; font-size:12px !important; }
+        #accordionSidebar .settings-submenu .nav-link i { flex-basis:18px; width:18px; margin-right:6px !important; }
+        #accordionSidebar .nav-item#logout-item { flex-shrink:0; padding-top:4px; padding-bottom:4px; }
+        .topbar { left:0 !important; width:100% !important; z-index:1060 !important; height:70px; min-height:70px; padding-top:0; padding-bottom:0; }
+        .topbar .navbar-nav { flex:0 0 auto; flex-direction:row; gap:4px; margin-left:auto !important; }
+        .topbar .navbar-nav > .nav-item { margin:0 !important; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
-        .topbar .user-role-text { display:none; }
+        .topbar .role-notification-link,
+        .topbar .organizer-account { width:42px; height:42px; margin:0; }
+        .topbar .organizer-account { display:inline-flex; align-items:center; justify-content:center; padding:0 !important; }
+        .topbar .organizer-account-label { display:none; }
+    }
+    @media (max-width:575.98px) {
+        .topbar .topbar-title { display:none; }
     }
 </style>
 <div id="wrapper">
@@ -163,7 +228,7 @@ if (!empty($userId) && !empty($conn)) {
     <div id="content-wrapper" style="background-color:#ffffff; padding-top:70px; margin-left:220px;">
         <div id="content">
             <nav class="navbar navbar-expand navbar-light topbar flex-nowrap mb-4 shadow" style="background-color:#09173c; position:fixed; top:0; left:220px; right:0; width:calc(100% - 220px); min-height:70px; z-index:999;">
-                <button class="btn btn-link topbar-toggle p-0 m-2" type="button" onclick="lmsToggleSidebar()" aria-label="Toggle sidebar">
+                <button id="organizerSidebarToggle" class="btn btn-link topbar-toggle p-0 m-2" type="button" aria-label="Toggle sidebar" aria-controls="accordionSidebar" aria-expanded="false">
                     <i class="bi bi-list text-white fs-3"></i>
                 </button>
                 <h1 class="mt-2 topbar-title" style="color:white;letter-spacing:1px;font-weight:500;">ORGANIZER PANEL</h1>
@@ -175,9 +240,9 @@ if (!empty($userId) && !empty($conn)) {
                         </button>
                     </li>
                     <li class="nav-item no-arrow">
-                        <div class="nav-link d-flex align-items-center" style="color:white;">
+                        <div class="nav-link d-flex align-items-center organizer-account" style="color:white;">
                             <i class="bi bi-person-circle" style="font-size:32px;color:white;"></i>
-                            <div class="ms-2 text-capitalize" style="color:white;font-size:13px;">
+                            <div class="organizer-account-label ms-2 text-capitalize" style="color:white;font-size:13px;">
                                 <b><?php echo htmlspecialchars($full, ENT_QUOTES, 'UTF-8'); ?></b><br>
                                 <span class="user-role-text"><?php echo $organizerRoleLabel; ?></span>
                             </div>
@@ -240,52 +305,54 @@ if (!empty($userId) && !empty($conn)) {
             }
         </script>
 <script>
-    function lmsToggleSidebar() {
-        var sidebar = document.getElementById('accordionSidebar');
-        var backdrop = document.getElementById('lmsSidebarBackdrop');
-        if (!sidebar) return;
-        if (window.innerWidth <= 768) {
-            var open = sidebar.classList.toggle('active');
-            if (backdrop) backdrop.classList.toggle('show', open);
-        } else {
-            var mini = document.body.classList.toggle('lms-mini');
-            try { localStorage.setItem('lms_sidebar_mini', mini ? '1' : '0'); } catch (e) {}
-        }
-    }
     (function () {
         var sidebar = document.getElementById('accordionSidebar');
         var backdrop = document.getElementById('lmsSidebarBackdrop');
+        var toggleButton = document.getElementById('organizerSidebarToggle');
+        var mobileQuery = window.matchMedia ? window.matchMedia('(max-width: 768px)') : null;
         if (!sidebar) return;
         var key = 'lms_sidebar_mini';
-        function isDesktop() { return window.innerWidth > 768; }
+        function isMobile() { return mobileQuery ? mobileQuery.matches : window.innerWidth <= 768; }
+        function setDrawerOpen(open) {
+            sidebar.classList.toggle('active', open);
+            if (backdrop) backdrop.classList.toggle('show', open);
+            if (toggleButton) toggleButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        if (toggleButton) {
+            toggleButton.addEventListener('click', function () {
+                if (isMobile()) {
+                    setDrawerOpen(!sidebar.classList.contains('active'));
+                } else {
+                    var mini = document.body.classList.toggle('lms-mini');
+                    try { localStorage.setItem(key, mini ? '1' : '0'); } catch (e) {}
+                }
+            });
+        }
+        function isDesktop() { return !isMobile(); }
         try { if (isDesktop() && localStorage.getItem(key) === '1') document.body.classList.add('lms-mini'); } catch (e) {}
         if (backdrop) {
             backdrop.addEventListener('click', function () {
-                sidebar.classList.remove('active');
-                backdrop.classList.remove('show');
+                setDrawerOpen(false);
             });
         }
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && sidebar.classList.contains('active')) {
-                sidebar.classList.remove('active');
-                if (backdrop) backdrop.classList.remove('show');
+                setDrawerOpen(false);
             }
         });
         sidebar.querySelectorAll('a.nav-link').forEach(function (a) {
             a.addEventListener('click', function () {
-                if (window.innerWidth <= 768) {
+                if (isMobile()) {
                     var href = a.getAttribute('href');
                     if (href && href !== '#') {
-                        sidebar.classList.remove('active');
-                        if (backdrop) backdrop.classList.remove('show');
+                        setDrawerOpen(false);
                     }
                 }
             });
         });
         window.addEventListener('resize', function () {
             if (isDesktop()) {
-                sidebar.classList.remove('active');
-                if (backdrop) backdrop.classList.remove('show');
+                setDrawerOpen(false);
             }
         });
     })();

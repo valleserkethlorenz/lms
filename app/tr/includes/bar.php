@@ -35,8 +35,8 @@ if (!empty($userId) && !empty($conn)) {
             align-items:center;
             justify-content:flex-start !important;
             width:100% !important;
-            min-height:52px;
-            padding:0.85rem 1rem !important;
+            min-height:44px;
+            padding:0.55rem 1rem !important;
             text-align:left !important;
         }
         #accordionSidebar .nav-item .nav-link i {
@@ -83,7 +83,11 @@ if (!empty($userId) && !empty($conn)) {
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
-        .topbar { left:0 !important; right:0 !important; width:100% !important; z-index:1060 !important; }
+        #accordionSidebar { top:70px; height:calc(100vh - 70px); height:calc(100dvh - 70px); overflow-y:auto; overscroll-behavior:contain; }
+        #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; padding-top:8px; padding-bottom:8px; z-index:2; background:#09173c; }
+        #accordionSidebar .sidebar-logo { width:48px; height:48px; }
+        #accordionSidebar .nav-item#logout-item { padding-top:6px; padding-bottom:6px; }
+        .topbar { left:0 !important; right:0 !important; width:100% !important; z-index:1060 !important; height:70px; min-height:70px; padding-top:0; padding-bottom:0; }
         .topbar-toggle { flex:0 0 auto; margin:0 10px 0 0 !important; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
         .topbar .user-role-text { display:none; }
@@ -176,14 +180,14 @@ if (!empty($userId) && !empty($conn)) {
             if (backdrop) backdrop.classList.toggle('show', open);
         } else {
             var mini = document.body.classList.toggle('lms-mini');
-            try { localStorage.setItem('lms_sidebar_mini', mini ? '1' : '0'); } catch (e) {}
+            try { localStorage.setItem('lms_sidebar_mini_team_rep', mini ? '1' : '0'); } catch (e) {}
         }
     }
     (function () {
         var sidebar = document.getElementById('accordionSidebar');
         var backdrop = document.getElementById('lmsSidebarBackdrop');
         if (!sidebar) return;
-        var key = 'lms_sidebar_mini';
+        var key = 'lms_sidebar_mini_team_rep';
         function isDesktop() { return window.innerWidth > 768; }
         try { if (isDesktop() && localStorage.getItem(key) === '1') document.body.classList.add('lms-mini'); } catch (e) {}
         if (backdrop) {

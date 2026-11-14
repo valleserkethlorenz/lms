@@ -95,17 +95,20 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
-        #accordionSidebar { position:fixed; top:0; left:-250px; width:220px; height:100vh; height:100dvh; overflow-y:auto; overscroll-behavior:contain; z-index:1050; transition:left .3s ease-in-out; }
+        #accordionSidebar { position:fixed; top:70px; left:-250px; width:220px; height:calc(100vh - 70px); height:calc(100dvh - 70px); overflow-y:auto; overscroll-behavior:contain; z-index:1050; transition:left .3s ease-in-out; }
         #accordionSidebar.active { left:0; }
         #accordionSidebar #logout-item { position:sticky; bottom:0; z-index:1; flex-shrink:0; background:#09173c; }
+        #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; padding-top:8px; padding-bottom:8px; z-index:2; background:#09173c; }
+        #accordionSidebar .sidebar-logo { width:48px; height:48px; }
+        #accordionSidebar #logout-item { padding-top:6px; padding-bottom:6px; }
         #accordionSidebar .nav-item { width:100%; }
         #accordionSidebar .nav-item .nav-link {
             display:flex !important;
             align-items:center;
             justify-content:flex-start !important;
             width:100% !important;
-            min-height:52px;
-            padding:0.85rem 1rem !important;
+            min-height:44px;
+            padding:0.55rem 1rem !important;
             text-align:left !important;
         }
         #accordionSidebar .nav-item .nav-link i {
@@ -122,7 +125,7 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
             line-height:1.3;
             white-space:nowrap;
         }
-        .topbar { position:fixed; top:0; left:0; right:0; min-height:70px; z-index:1060; }
+        .topbar { position:fixed; top:0; left:0; right:0; height:70px; min-height:70px; padding-top:0; padding-bottom:0; z-index:1060; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:44vw; }
         .topbar .user-role-text { display:none; }
     }
@@ -200,14 +203,14 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
             if (backdrop) backdrop.classList.toggle('show', open);
         } else {
             var mini = document.body.classList.toggle('lms-mini');
-            try { localStorage.setItem('lms_sidebar_mini', mini ? '1' : '0'); } catch (e) {}
+            try { localStorage.setItem('lms_sidebar_mini_team_rep', mini ? '1' : '0'); } catch (e) {}
         }
     }
     (function () {
         var sidebar = document.getElementById('accordionSidebar');
         var backdrop = document.getElementById('lmsSidebarBackdrop');
         if (!sidebar) return;
-        var key = 'lms_sidebar_mini';
+        var key = 'lms_sidebar_mini_team_rep';
         function isDesktop() { return window.innerWidth > 768; }
         try { if (isDesktop() && localStorage.getItem(key) === '1') document.body.classList.add('lms-mini'); } catch (e) {}
         if (backdrop) {
