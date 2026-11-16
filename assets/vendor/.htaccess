@@ -1,0 +1,9 @@
+# Vendored libraries are immutable: the folder name carries the version, so a
+# new release always lands in a new path. Cache them for a year.
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=31536000, immutable"
+</IfModule>
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresDefault "access plus 1 year"
+</IfModule>
