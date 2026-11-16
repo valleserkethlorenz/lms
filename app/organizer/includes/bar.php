@@ -136,9 +136,22 @@ if (!empty($userId) && !empty($conn)) {
         body.lms-mini .sidebar .settings-submenu .nav-link i { margin-right:.3rem !important; font-size:.9rem !important; }
     }
     @media (max-width:768px) {
-        /* Topbar spans the full width on mobile (sidebar is an off-canvas drawer) */
-        #accordionSidebar { top:70px; height:calc(100vh - 70px); height:calc(100dvh - 70px); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; }
-        #accordionSidebar .sidebar-logo-wrap { padding-top:4px; padding-bottom:4px; }
+        /* Topbar spans the full width on mobile (sidebar is an off-canvas drawer).
+           The drawer is capped to the visible viewport because SB Admin forces
+           .sidebar min-height:100vh, which otherwise hides the bottom of the menu. */
+        .sidebar { min-height:0; }
+        #accordionSidebar {
+            top:70px;
+            height:calc(100vh - 70px);
+            height:calc(100dvh - 70px);
+            min-height:0;
+            max-height:calc(100vh - 70px);
+            max-height:calc(100dvh - 70px);
+            overflow-x:hidden;
+            overflow-y:auto;
+            overscroll-behavior:contain;
+        }
+        #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; z-index:3; padding-top:4px; padding-bottom:4px; background:#09173c; }
         #accordionSidebar .sidebar-logo { width:40px; height:40px; }
         #accordionSidebar .nav-item { flex:0 0 auto; }
         #accordionSidebar .nav-item > .nav-link,
@@ -150,7 +163,7 @@ if (!empty($userId) && !empty($conn)) {
         #accordionSidebar .settings-submenu { margin-left:28px; }
         #accordionSidebar .settings-submenu .nav-link { min-height:30px; padding:0.2rem 0.5rem !important; font-size:12px !important; }
         #accordionSidebar .settings-submenu .nav-link i { flex-basis:18px; width:18px; margin-right:6px !important; }
-        #accordionSidebar .nav-item#logout-item { flex-shrink:0; padding-top:4px; padding-bottom:4px; }
+        #accordionSidebar .nav-item#logout-item { position:sticky; bottom:0; z-index:2; flex-shrink:0; background:#09173c; padding-top:4px; padding-bottom:4px; }
         .topbar { left:0 !important; width:100% !important; z-index:1060 !important; height:70px; min-height:70px; padding-top:0; padding-bottom:0; }
         .topbar .navbar-nav { flex:0 0 auto; flex-direction:row; gap:4px; margin-left:auto !important; }
         .topbar .navbar-nav > .nav-item { margin:0 !important; }

@@ -95,7 +95,7 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
-        #accordionSidebar { position:fixed; top:70px; left:-250px; width:220px; height:calc(100vh - 70px); height:calc(100dvh - 70px); overflow-y:auto; overscroll-behavior:contain; z-index:1050; transition:left .3s ease-in-out; }
+        #accordionSidebar { position:fixed; top:70px; left:-250px; width:220px; height:calc(100vh - 70px); height:calc(100dvh - 70px); min-height:0; max-height:calc(100vh - 70px); max-height:calc(100dvh - 70px); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; z-index:1050; transition:left .3s ease-in-out; }
         #accordionSidebar.active { left:0; }
         #accordionSidebar #logout-item { position:sticky; bottom:0; z-index:1; flex-shrink:0; background:#09173c; }
         #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; padding-top:8px; padding-bottom:8px; z-index:2; background:#09173c; }

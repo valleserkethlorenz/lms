@@ -83,8 +83,23 @@ if (!empty($userId) && !empty($conn)) {
         body.lms-mini .sidebar-logo { width:40px; height:40px; }
     }
     @media (max-width:768px) {
-        #accordionSidebar { top:70px; height:calc(100vh - 70px); height:calc(100dvh - 70px); overflow-y:auto; overscroll-behavior:contain; }
-        #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; padding-top:8px; padding-bottom:8px; z-index:2; background:#09173c; }
+        /* Off-canvas drawer sits below the 70px topbar and must never grow past
+           the visible viewport (SB Admin forces .sidebar min-height:100vh, which
+           otherwise pushes the sticky logout 70px below the screen). */
+        .sidebar { height:100vh; height:100dvh; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+        .sidebar #logout-item { position:sticky; bottom:0; z-index:2; flex-shrink:0; background:#09173c; }
+        #accordionSidebar {
+            top:70px;
+            height:calc(100vh - 70px);
+            height:calc(100dvh - 70px);
+            min-height:0;
+            max-height:calc(100vh - 70px);
+            max-height:calc(100dvh - 70px);
+            overflow-x:hidden;
+            overflow-y:auto;
+            overscroll-behavior:contain;
+        }
+        #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; padding-top:8px; padding-bottom:8px; z-index:3; background:#09173c; }
         #accordionSidebar .sidebar-logo { width:48px; height:48px; }
         #accordionSidebar .nav-item#logout-item { padding-top:6px; padding-bottom:6px; }
         .topbar { left:0 !important; right:0 !important; width:100% !important; z-index:1060 !important; height:70px; min-height:70px; padding-top:0; padding-bottom:0; }
