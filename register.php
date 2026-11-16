@@ -20,20 +20,24 @@ if (function_exists('currentUserId') && currentUserId() > 0) {
 $redirect = isset($_GET['redirect']) && is_string($_GET['redirect']) ? trim($_GET['redirect']) : '';
 $loginHref = 'login.php' . ($redirect !== '' ? '?redirect=' . urlencode($redirect) : '');
 
+// Authentication pages must always render the current markup/styles.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 $lmsPageCss = ['assets/css/auth-layout.css'];
 include __DIR__ . '/includes/header.php';
 ?>
 <style>
-    /* The registration card keeps its existing design. Only the #signUp
-       scope was renamed to .signup-card and the modal-only height limits
-       were removed so the page can scroll normally. */
+    /* The registration card follows the same flat card design as the
+       login panel. The page-level split keeps both auth pages aligned. */
 
-    /* Equal register columns. Kept in the page itself as well as in
-       auth-layout.css so a stale cached stylesheet cannot restore the old
-       asymmetric register split. */
+    /* Match the login page's two-panel proportions. Kept in the page itself
+       as well as in auth-layout.css so a stale cached stylesheet cannot
+       restore the old asymmetric register split. */
     @media (min-width: 1101px) {
         .auth-split.auth-split--register {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            grid-template-columns: minmax(0, 1.15fr) minmax(440px, 1fr) !important;
         }
     }
     @media (max-width: 1100px) {
@@ -151,12 +155,146 @@ include __DIR__ . '/includes/header.php';
         .signup-card .signup-email-row{flex-direction:column}
         .signup-card .btn-signup-code{min-height:42px;padding:10px 16px}
     }
+    /* ── Login-consistent card styling ─────────────────────────────
+       Keep the register wizard visually identical to the login panel:
+       flat navy header, white card, same labels, inputs and buttons.
+       This block intentionally comes last so it overrides the earlier
+       wizard-specific styling. */
+    .signup-card .modal-content{
+        border-radius:10px;
+        box-shadow:0 10px 30px rgba(17,23,60,.12);
+    }
+    .signup-card .modal-header{
+        background:#09173c;
+        padding:22px 18px 18px;
+    }
+    .signup-card .signup-logo-circle{
+        width:64px;height:64px;margin:0 auto 10px;padding:6px;
+        border:0;box-shadow:0 6px 18px rgba(9,23,60,.18);
+    }
+    .signup-card .modal-title{
+        font-size:16px;font-weight:400;letter-spacing:1px;
+    }
+    .signup-card .modal-body{
+        padding:22px;
+    }
+    .signup-card .signup-section-header{
+        margin:18px 0 12px;padding-bottom:8px;border-bottom:1px solid #e8ecf1;
+    }
+    .signup-card .section-icon,
+    .signup-card .section-icon.personal,
+    .signup-card .section-icon.security{
+        width:32px;height:32px;border-radius:8px;
+        background:#eef2f7;color:#09173c;font-size:15px;
+    }
+    .signup-card .signup-section-header h6{
+        font-size:14px;font-weight:600;color:#09173c;letter-spacing:.2px;
+    }
+    .signup-card .form-label{
+        font-size:13px;font-weight:400;color:#334155;margin-bottom:6px;
+    }
+    .signup-card .form-control,
+    .signup-card .form-select{
+        min-height:38px;border:1px solid #d1d3e2;border-radius:5.6px;
+        font-size:1rem;padding:.375rem .75rem;
+    }
+    .signup-card .form-control:focus,
+    .signup-card .form-select:focus{
+        border-color:#86b7fe;box-shadow:0 0 0 .25rem rgba(13,110,253,.25);
+    }
+    .signup-card .input-group-text{
+        width:auto;background:#fff;border:1px solid #d1d3e2;border-right:0;
+        border-radius:5.6px 0 0 5.6px;color:#475569;font-size:1rem;
+        padding:.375rem .75rem;
+    }
+    .signup-card .input-group .form-control,
+    .signup-card .input-group .form-select{
+        border-left:0;border-radius:0 5.6px 5.6px 0;padding-left:.75rem;
+    }
+    .signup-card .signup-pw-wrapper .form-control{
+        padding-right:42px;border-radius:0 5.6px 5.6px 0;
+    }
+    .signup-card .signup-pw-toggle{
+        color:#475569;font-size:18px;
+    }
+    .signup-card .signup-pw-toggle:hover{color:#09173c;}
+    .signup-card .pw-checklist{
+        border-radius:8px;
+    }
+    .signup-card .pw-checklist .pw-check-item{font-size:12px;}
+    .signup-card .btn-signup-close{
+        border-radius:8px;font-size:12px;font-weight:600;
+        padding:8px 14px;border:1px solid #dfe6ef;background:#f8fafc;color:#53617a;
+        min-height:42px;
+    }
+    .signup-card .btn-signup-close:hover{
+        background:#eef4ff;border-color:#cbd9ee;color:#09173c;
+    }
+    .signup-card .btn-signup-submit,
+    .signup-card .btn-signup-verify{
+        border-radius:8px;font-size:1rem;font-weight:600;
+        padding:12px;background:#09173c;border:none;color:#fff;
+        box-shadow:none;
+    }
+    .signup-card .btn-signup-submit:hover,
+    .signup-card .btn-signup-verify:hover:not(:disabled){
+        background:#07305a;border-color:#07305a;transform:none;box-shadow:none;
+    }
+    .signup-card .btn-signup-submit:active{transform:none;box-shadow:none;}
+    .signup-card .btn-signup-verify:disabled{background:#e2e8f0;color:#64748b;box-shadow:none;}
+    .signup-card .signup-captcha-card{
+        gap:12px;padding:14px 16px;align-items:flex-start;
+        background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;
+        box-shadow:none;
+    }
+    .signup-card .signup-captcha-icon{
+        width:36px;height:36px;font-size:17px;
+        background:#09173c;color:#fff;border-radius:8px;box-shadow:none;
+    }
+    .signup-card .signup-captcha-label{font-size:12.5px;color:#334155;}
+    .signup-card .signup-captcha-hint{font-size:11px;color:#64748b;}
+    .signup-card .signup-stepper-item.is-active .signup-stepper-dot{
+        background:#09173c;color:#fff;box-shadow:none;
+    }
+    .signup-card .signup-stepper-item.is-complete .signup-stepper-dot{
+        background:#09173c;color:#fff;
+    }
+    .signup-card .signup-stepper-item{font-size:12px;}
+    .signup-card .signup-verify-wrap{max-width:none;margin:0;padding:0;}
+    .signup-card .signup-verify-head{gap:12px;margin-bottom:16px;}
+    .signup-card .signup-verify-icon{
+        width:46px;height:46px;border-radius:8px;background:#eef2f7;
+        color:#09173c;font-size:18px;
+    }
+    .signup-card .signup-verify-title{
+        font-size:16px;line-height:1.3;font-weight:600;letter-spacing:0;
+        color:#09173c;margin:0 0 4px;
+    }
+    .signup-card .signup-verify-copy{
+        font-size:13px;line-height:1.55;color:#64748b;
+    }
+    .signup-card .signup-code-hint{font-size:11px;color:#64748b;}
+    .signup-card .btn-signup-code{
+        border-radius:8px;font-size:12px;font-weight:600;
+        padding:8px 14px;min-height:42px;
+        border:1px solid #dfe6ef;background:#f8fafc;color:#53617a;
+        white-space:nowrap;
+    }
+    .signup-card .btn-signup-code:hover:not(:disabled){
+        background:#eef4ff;border-color:#cbd9ee;color:#09173c;
+    }
+    .signup-card .signup-verified-chip{
+        background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
+        color:#334155;font-size:12px;padding:8px 12px;
+    }
+    .signup-card .signup-verified-chip .bi{color:#09173c;}
+    .signup-card .signup-verified-chip .btn-link{font-size:12px;}
+    .signup-card .signup-alt-link{font-size:12px;}
 </style>
 
 <body class="auth-page">
     <div class="auth-split auth-split--register">
         <?php
-        $authEyebrow = 'Create your account';
         include __DIR__ . '/components/auth/brand-panel.php';
         ?>
 
@@ -244,7 +382,7 @@ include __DIR__ . '/includes/header.php';
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="col-12 col-md-6">
                                 <label for="validationServer02" class="form-label">First Name<sup class="text-danger">*</sup></label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-person"></i></span>
@@ -253,7 +391,7 @@ include __DIR__ . '/includes/header.php';
                                 <div class="invalid-feedback">Please enter first name!</div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="col-12 col-md-6">
                                 <label for="validationServer03" class="form-label">Last Name<sup class="text-danger">*</sup></label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-person"></i></span>
@@ -262,7 +400,7 @@ include __DIR__ . '/includes/header.php';
                                 <div class="invalid-feedback">Please enter last name!</div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="col-12 col-md-6">
                                 <label for="mname" class="form-label">Middle Initial</label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-card-text"></i></span>
@@ -270,7 +408,7 @@ include __DIR__ . '/includes/header.php';
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="col-12 col-md-6">
                                 <label for="signupSuffix" class="form-label">Suffix</label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-tag"></i></span>
@@ -286,7 +424,7 @@ include __DIR__ . '/includes/header.php';
                                 </div>
                             </div>
 
-                            <div class="col-md-6">
+                            <div class="col-12">
                                 <label for="testingss" class="form-label">Phone<sup class="text-danger">*</sup></label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-phone"></i></span>
@@ -369,11 +507,7 @@ include __DIR__ . '/includes/header.php';
                 </div>
             </div>
 
-            <div class="auth-form-note">
-                Already have an account? <a href="<?= htmlspecialchars($loginHref, ENT_QUOTES, 'UTF-8') ?>">Sign in</a>
-                <span class="auth-note-sep">&middot;</span>
-                <a href="index.php">Back to home</a>
-            </div>
+            
         </main>
     </div>
 

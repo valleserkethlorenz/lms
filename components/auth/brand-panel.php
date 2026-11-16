@@ -7,34 +7,26 @@
  * not another product, so the auth pages stay on-brand by default.
  */
 
-$authEyebrow        = $authEyebrow        ?? 'City Sports Development Program';
+
 $authHeadline       = $authHeadline       ?? 'Your league season,';
 $authHeadlineAccent = $authHeadlineAccent ?? 'all in one place.';
-$authLead           = $authLead           ?? 'Register teams, manage rosters, follow schedules, and keep every league activity organized in one account.';
+$authLead           = $authLead           ?? 'Register your team, manage rosters, follow schedules, and keep every league activity organized in one account.';
 $authPoints         = $authPoints         ?? [
-    ['icon' => 'bi bi-trophy',             'title' => 'League management',   'text' => 'Publish leagues and track registration windows.'],
-    ['icon' => 'bi bi-people-fill',        'title' => 'Team registration',   'text' => 'Submit rosters and player requirements online.'],
-    ['icon' => 'bi bi-calendar-event',     'title' => 'Schedules & results', 'text' => 'Follow fixtures, scores, and live standings.'],
-    ['icon' => 'bi bi-file-earmark-text',  'title' => 'Records & reports',   'text' => 'Keep documents and activity history organized.'],
+    ['icon' => 'bi bi-compass',            'title' => 'Browse leagues',      'text' => 'Find open leagues and registration windows near you.'],
+    ['icon' => 'bi bi-people-fill',        'title' => 'Team registration',   'text' => 'Submit your roster and player requirements online.'],
+    ['icon' => 'bi bi-calendar-event',     'title' => 'Schedules & results', 'text' => 'Follow your fixtures, scores, and live standings.'],
+    ['icon' => 'bi bi-folder2-open',       'title' => 'Team records',        'text' => 'Keep your team documents and activity history organized.'],
 ];
 
 $authBase    = isset($lmsBase) ? rtrim((string) $lmsBase, '/') : '';
 $authHomeUrl = htmlspecialchars(($authBase !== '' ? $authBase : '') . '/index.php', ENT_QUOTES, 'UTF-8');
-$authLogoUrl = htmlspecialchars(($authBase !== '' ? $authBase : '') . '/assets/images/logo.jpg', ENT_QUOTES, 'UTF-8');
 ?>
 <aside class="auth-brand-panel" aria-label="City Sports Development Program">
-    <a class="auth-brand-pill" href="<?= $authHomeUrl ?>">
-        <span class="auth-brand-logo">
-            <img src="<?= $authLogoUrl ?>" alt="City Sports Development Program logo">
-        </span>
-        <span class="auth-brand-text">
-            <span class="auth-brand-name">CITY SPORTS DEVELOPMENT PROGRAM</span>
-            <span class="auth-brand-sub">League Management System</span>
-        </span>
+    <a class="auth-brand-home" href="<?= $authHomeUrl ?>">
+        <i class="bi bi-arrow-left" aria-hidden="true"></i>Back to home
     </a>
 
     <div class="auth-brand-body">
-        <span class="auth-brand-eyebrow"><?= htmlspecialchars($authEyebrow, ENT_QUOTES, 'UTF-8') ?></span>
         <h1 class="auth-brand-title">
             <?= htmlspecialchars($authHeadline, ENT_QUOTES, 'UTF-8') ?><br>
             <span><?= htmlspecialchars($authHeadlineAccent, ENT_QUOTES, 'UTF-8') ?></span>
@@ -55,6 +47,6 @@ $authLogoUrl = htmlspecialchars(($authBase !== '' ? $authBase : '') . '/assets/i
 
     <div class="auth-brand-foot">
         <span>Panabo City &middot; Davao del Norte</span>
-        <a href="<?= $authHomeUrl ?>"><i class="bi bi-arrow-left" aria-hidden="true"></i>Back to home</a>
+       
     </div>
 </aside>

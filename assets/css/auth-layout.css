@@ -22,7 +22,8 @@
 }
 
 .auth-split.auth-split--register {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    /* Match the login page's two-panel proportions exactly. */
+    grid-template-columns: minmax(0, 1.15fr) minmax(440px, 1fr);
 }
 
 /* ------------------------------------------------------------
@@ -32,9 +33,10 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 44px;
-    padding: clamp(28px, 4.4vw, 64px);
+    align-items: center;
+    justify-content: center;
+    gap: clamp(20px, 3.4vh, 40px);
+    padding: clamp(24px, 3.4vh, 48px) clamp(28px, 4.4vw, 64px);
     color: #ffffff;
     background:
         linear-gradient(118deg, rgba(4, 18, 48, .97) 0%, rgba(7, 31, 69, .92) 54%, rgba(7, 31, 69, .55) 100%),
@@ -54,74 +56,31 @@
     pointer-events: none;
 }
 
-.auth-brand-pill {
-    position: relative;
-    z-index: 1;
+.auth-brand-home {
+    position: absolute;
+    z-index: 2;
+    top: clamp(24px, 3.4vh, 48px);
+    left: clamp(28px, 4.4vw, 64px);
     display: inline-flex;
     align-items: center;
-    gap: 14px;
-    align-self: flex-start;
-    max-width: 100%;
-    padding: 10px 22px 10px 10px;
-    border: 1px solid rgba(255, 255, 255, .28);
-    border-radius: 999px;
-    background: rgba(9, 23, 60, .3);
+    gap: 7px;
+    color: rgba(255, 255, 255, .82);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    text-decoration: none;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+    transition: color .2s ease, transform .2s ease;
+}
+
+.auth-brand-home:hover {
     color: #ffffff;
     text-decoration: none;
-    backdrop-filter: blur(10px);
-    transition: background .2s ease, border-color .2s ease;
+    transform: translateX(-2px);
 }
 
-.auth-brand-pill:hover {
-    color: #ffffff;
-    text-decoration: none;
-    background: rgba(9, 23, 60, .45);
-    border-color: rgba(255, 255, 255, .42);
-}
-
-.auth-brand-logo {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    width: 46px;
-    height: 46px;
-    padding: 3px;
-    border-radius: 50%;
-    background: #ffffff;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, .18);
-    overflow: hidden;
-}
-
-.auth-brand-logo img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    border-radius: 50%;
-    object-fit: cover;
-}
-
-.auth-brand-text {
-    display: block;
-    min-width: 0;
-    text-align: left;
-}
-
-.auth-brand-name {
-    display: block;
-    margin: 0;
-    font-size: 12.5px;
-    font-weight: 700;
-    letter-spacing: .7px;
-    line-height: 1.25;
-}
-
-.auth-brand-sub {
-    display: block;
-    margin-top: 2px;
-    font-size: 11px;
-    color: rgba(255, 255, 255, .72);
-    line-height: 1.3;
+.auth-brand-home i {
+    font-size: 15px;
 }
 
 .auth-brand-body {
@@ -129,42 +88,21 @@
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 18px;
-    max-width: 560px;
-}
-
-.auth-brand-eyebrow {
-    display: inline-flex;
-    align-items: center;
-    align-self: flex-start;
-    gap: 9px;
-    padding: 7px 14px;
-    border: 1px solid rgba(140, 200, 255, .38);
-    border-radius: 999px;
-    background: rgba(140, 200, 255, .12);
-    color: #cfe8ff;
-    font-size: .68rem;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-}
-
-.auth-brand-eyebrow::before {
-    content: "";
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #8cc8ff;
-    box-shadow: 0 0 0 3px rgba(140, 200, 255, .18);
+    align-items: flex-start;
+    gap: 22px;
+    width: 100%;
+    max-width: 680px;
+    margin: auto;
+    text-align: left;
 }
 
 .auth-brand-title {
     margin: 0;
     color: #ffffff;
-    font-size: clamp(2rem, 3.4vw, 3.6rem);
+    font-size: clamp(2.4rem, 3.9vw, 4.35rem);
     font-weight: 800;
     line-height: 1.06;
-    letter-spacing: -1.4px;
+    letter-spacing: -1.6px;
 }
 
 .auth-brand-title span {
@@ -172,48 +110,51 @@
 }
 
 .auth-brand-lead {
-    max-width: 470px;
+    max-width: 560px;
     margin: 0;
     color: #d4e1f1;
-    font-size: .97rem;
-    line-height: 1.65;
+    font-size: 1.12rem;
+    line-height: 1.7;
 }
 
 .auth-brand-points {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    margin: 8px 0 0;
+    gap: 14px;
+    width: 100%;
+    margin: 6px auto 0;
     padding: 0;
     list-style: none;
+    text-align: left;
 }
 
 .auth-brand-point {
     display: flex;
     align-items: flex-start;
-    gap: 10px;
-    padding: 12px 14px;
+    gap: 12px;
+    padding: 15px 17px;
     border: 1px solid rgba(255, 255, 255, .17);
     border-radius: 12px;
     background: rgba(255, 255, 255, .08);
     color: #eaf2ff;
-    font-size: 12px;
-    line-height: 1.45;
+    font-size: 14.5px;
+    line-height: 1.5;
     backdrop-filter: blur(6px);
 }
 
 .auth-brand-point i {
     flex: 0 0 auto;
-    margin-top: 1px;
+    margin-top: 2px;
     color: #8cc8ff;
-    font-size: 15px;
+    font-size: 19px;
 }
 
 .auth-brand-point strong {
     display: block;
-    margin-bottom: 1px;
-    font-size: 12.5px;
+    margin-bottom: 2px;
+    font-size: 15.5px;
     font-weight: 700;
+    line-height: 1.35;
     color: #ffffff;
 }
 
@@ -225,10 +166,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 14px;
+    width: 100%;
     padding-top: 18px;
     border-top: 1px solid rgba(255, 255, 255, .16);
     color: rgba(255, 255, 255, .64);
-    font-size: 11.5px;
+    font-size: 13px;
 }
 
 .auth-brand-foot a {
@@ -289,71 +231,152 @@
 }
 
 /* ------------------------------------------------------------
+   Desktop: both panels stay viewport-height.
+   The left brand panel remains fixed to the viewport, and only the
+   right-hand form panel scrolls when the registration form is long.
+   ------------------------------------------------------------ */
+@media (min-width: 1101px) {
+    .auth-page {
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    .auth-split {
+        height: 100vh;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .auth-brand-panel {
+        height: 100vh;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    .auth-form-panel {
+        height: 100vh;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        justify-content: center;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(9, 23, 60, .18) transparent;
+    }
+
+    /* The register card can be taller than the viewport; start it at the
+       top of the scroll area instead of centering (which clips its top). */
+    .auth-split--register .auth-form-panel {
+        justify-content: flex-start;
+    }
+
+    .auth-form-panel::-webkit-scrollbar {
+        display: block;
+        width: 6px;
+    }
+
+    .auth-form-panel::-webkit-scrollbar-thumb {
+        background: rgba(9, 23, 60, .18);
+        border-radius: 999px;
+    }
+
+    .auth-form-panel::-webkit-scrollbar-track {
+        background: transparent;
+    }
+}
+
+@media (min-width: 1101px) and (max-height: 720px) {
+    .auth-brand-panel {
+        padding: 16px clamp(22px, 3vw, 38px);
+        gap: 12px;
+    }
+
+    .auth-brand-home {
+        top: 16px;
+        left: clamp(22px, 3vw, 38px);
+    }
+
+    .auth-brand-body {
+        gap: 12px;
+    }
+
+    .auth-brand-title {
+        font-size: clamp(1.8rem, 2.9vw, 2.6rem);
+        letter-spacing: -.8px;
+    }
+
+    .auth-brand-lead {
+        font-size: .95rem;
+        line-height: 1.55;
+    }
+
+    .auth-brand-points {
+        gap: 11px;
+        margin-top: 0;
+    }
+
+    .auth-brand-point {
+        gap: 10px;
+        padding: 10px 13px;
+        font-size: 12.6px;
+        line-height: 1.45;
+    }
+
+    .auth-brand-point i {
+        font-size: 16px;
+    }
+
+    .auth-brand-point strong {
+        font-size: 13.5px;
+    }
+
+    .auth-brand-foot {
+        padding-top: 10px;
+        font-size: 11.5px;
+    }
+}
+
+@media (min-width: 1101px) and (max-height: 700px) {
+    .auth-split--login .auth-form-panel {
+        justify-content: flex-start;
+    }
+}
+
+/* ------------------------------------------------------------
    Responsive
    ------------------------------------------------------------ */
 @media (max-width: 1100px) {
+    .auth-page {
+        height: auto;
+        overflow: visible;
+    }
+
     .auth-split,
     .auth-split--login,
     .auth-split.auth-split--register {
         grid-template-columns: minmax(0, 1fr);
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
     }
 
+    /* The brand bar had only the logo pill; with the pill removed the
+       bar would be empty, so the form takes the full viewport instead. */
     .auth-brand-panel {
-        flex-direction: row;
-        align-items: center;
-        gap: 16px;
-        padding: 18px 24px;
-        background:
-            linear-gradient(118deg, rgba(4, 18, 48, .98) 0%, rgba(7, 31, 69, .94) 100%),
-            url(../images/landing_img.jpg) center 30% / cover no-repeat;
-    }
-
-    .auth-brand-panel::after,
-    .auth-brand-body,
-    .auth-brand-foot {
         display: none;
     }
 
-    .auth-brand-pill {
-        padding: 0;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        backdrop-filter: none;
-    }
-
-    .auth-brand-pill:hover {
-        background: transparent;
-    }
-
     .auth-form-panel {
+        height: auto;
+        overflow: visible;
         justify-content: flex-start;
-        min-height: calc(100vh - 84px);
+        min-height: 100vh;
         padding: 34px 22px 44px;
     }
 }
 
 @media (max-width: 575.98px) {
-    .auth-brand-panel {
-        padding: 14px 16px;
-    }
-
-    .auth-brand-logo {
-        width: 38px;
-        height: 38px;
-    }
-
-    .auth-brand-name {
-        font-size: 10.8px;
-        letter-spacing: .4px;
-    }
-
-    .auth-brand-sub {
-        font-size: 10px;
-    }
-
     .auth-form-panel {
-        min-height: calc(100vh - 72px);
+        min-height: 100vh;
         padding: 22px 14px 34px;
     }
 
@@ -363,7 +386,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .auth-brand-pill,
+    .auth-brand-home,
     .auth-form-note a {
         transition: none;
     }

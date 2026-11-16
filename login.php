@@ -1,4 +1,9 @@
 <?php
+// Authentication pages must always render the current markup/styles.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 $url = isset($_GET['page']) && is_string($_GET['page']) ? $_GET['page'] : null;
 $redirect = isset($_GET['redirect']) && is_string($_GET['redirect']) ? trim($_GET['redirect']) : '';
 $registerHref = 'register.php' . ($redirect !== '' ? '?redirect=' . urlencode($redirect) : '');
@@ -78,11 +83,11 @@ include 'includes/header.php';
     #result{color:#dc2626;margin-top:8px}
 
     /* Captcha Card */
-    .captcha-card{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:linear-gradient(135deg,#f0f4ff 0%,#e0e7ff 100%);border:1.5px solid #c7d2fe;border-radius:10px;margin:12px 0;box-shadow:0 2px 8px rgba(79,70,229,.08)}
-    .captcha-card-icon{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#4f46e5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;flex-shrink:0;box-shadow:0 4px 10px rgba(99,102,241,.3)}
+    .captcha-card{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin:12px 0;box-shadow:none}
+    .captcha-card-icon{width:36px;height:36px;border-radius:8px;background:#09173c;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;flex-shrink:0;box-shadow:none}
     .captcha-card-body{flex:1;min-width:0}
-    .captcha-card-label{display:block;font-size:12.5px;font-weight:700;color:#312e81;margin:0 0 2px;letter-spacing:.3px}
-    .captcha-card-hint{font-size:11px;color:#4338ca;margin:0 0 8px;font-weight:500}
+    .captcha-card-label{display:block;font-size:12.5px;font-weight:700;color:#334155;margin:0 0 2px;letter-spacing:.3px}
+    .captcha-card-hint{font-size:11px;color:#64748b;margin:0 0 8px;font-weight:500}
     .captcha-widget{display:flex;justify-content:center;width:100%;overflow:hidden}
     #recaptcha-login{width:304px;transform:scale(.88);transform-origin:top center}
     @media (max-width:576px){
@@ -96,7 +101,6 @@ include 'includes/header.php';
 <body class="auth-page">
     <div class="auth-split auth-split--login">
         <?php
-        $authEyebrow = 'Sign in to your workspace';
         include __DIR__ . '/components/auth/brand-panel.php';
         ?>
 
@@ -155,9 +159,7 @@ include 'includes/header.php';
                 </div>
             </div>
 
-            <div class="auth-form-note">
-                <a href="index.php"><i class="bi bi-arrow-left"></i>Back to home</a>
-            </div>
+           
         </main>
     </div>
 
