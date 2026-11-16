@@ -14,6 +14,11 @@ $isAuthenticated = $userId > 0 && in_array($userRole, [1, 2, 3, 4], true);
     font-weight: 400;
   }
 
+  .dashboard-header .nav-link:hover,
+  .dashboard-header .nav-link:focus {
+    color: #fff;
+  }
+
   .nav-link::after {
     content: "";
     position: absolute;
