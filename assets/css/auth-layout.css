@@ -21,7 +21,7 @@
     min-height: 100vh;
 }
 
-.auth-split--register {
+.auth-split.auth-split--register {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
@@ -294,7 +294,7 @@
 @media (max-width: 1100px) {
     .auth-split,
     .auth-split--login,
-    .auth-split--register {
+    .auth-split.auth-split--register {
         grid-template-columns: minmax(0, 1fr);
     }
 

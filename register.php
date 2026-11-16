@@ -27,7 +27,26 @@ include __DIR__ . '/includes/header.php';
     /* The registration card keeps its existing design. Only the #signUp
        scope was renamed to .signup-card and the modal-only height limits
        were removed so the page can scroll normally. */
-    .signup-card{width:100%;max-width:780px;margin:0 auto;text-align:left}
+
+    /* Equal register columns. Kept in the page itself as well as in
+       auth-layout.css so a stale cached stylesheet cannot restore the old
+       asymmetric register split. */
+    @media (min-width: 1101px) {
+        .auth-split.auth-split--register {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+    }
+    @media (max-width: 1100px) {
+        .auth-split.auth-split--register {
+            grid-template-columns: minmax(0, 1fr) !important;
+        }
+    }
+    .auth-split.auth-split--register > .auth-brand-panel,
+    .auth-split.auth-split--register > .auth-form-panel {
+        min-width: 0;
+    }
+
+    .signup-card{width:100%;max-width:620px;margin:0 auto;text-align:left}
     .signup-card .modal-content{width:100%;border:none;border-radius:18px;overflow:hidden;box-shadow:0 24px 64px rgba(9,23,60,.18)}
     .signup-card .modal-header{background:linear-gradient(135deg,#09173c 0%,#1a3a6b 100%);color:#fff;padding:26px 28px 22px;border:none;justify-content:center;flex-direction:column;align-items:center}
     .signup-card .signup-logo-circle{width:62px;height:62px;border-radius:50%;background:#fff;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;padding:5px;box-shadow:0 6px 20px rgba(9,23,60,.22);border:2px solid rgba(255,255,255,.18)}

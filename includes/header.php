@@ -156,7 +156,15 @@ $lmsBase = substr($lmsBase, 0, strrpos($lmsBase, '/')); // go up from /includes 
 
     <?php if (!empty($lmsPageCss)): ?>
         <?php foreach ((array) $lmsPageCss as $lmsCssFile): ?>
-            <link rel="stylesheet" href="<?= htmlspecialchars($lmsBase) ?>/<?= htmlspecialchars(ltrim((string) $lmsCssFile, '/'), ENT_QUOTES, 'UTF-8') ?>">
+            <?php
+            $lmsCssRelative = ltrim((string) $lmsCssFile, '/');
+            $lmsCssPath = __DIR__ . '/../' . $lmsCssRelative;
+            $lmsCssHref = htmlspecialchars($lmsBase) . '/' . htmlspecialchars($lmsCssRelative, ENT_QUOTES, 'UTF-8');
+            if (is_file($lmsCssPath)) {
+                $lmsCssHref .= '?v=' . filemtime($lmsCssPath);
+            }
+            ?>
+            <link rel="stylesheet" href="<?= $lmsCssHref ?>">
         <?php endforeach; ?>
     <?php endif; ?>
 </head>
