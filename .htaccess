@@ -2,9 +2,23 @@
 # This prevents session name mismatch between login and protected pages
 <IfModule mod_php.c>
     php_value session.name "LMS_SESSION"
+    # Team registration uploads: keep the local XAMPP limits in line with
+    # .user.ini (FPM) and fpm_custom.conf (Heroku).
+    php_value upload_max_filesize 12M
+    php_value post_max_size 60M
+    php_value max_file_uploads 40
+    php_value memory_limit 256M
+    php_value max_execution_time 120
+    php_value max_input_time 120
 </IfModule>
 <IfModule mod_php7.c>
     php_value session.name "LMS_SESSION"
+    php_value upload_max_filesize 12M
+    php_value post_max_size 60M
+    php_value max_file_uploads 40
+    php_value memory_limit 256M
+    php_value max_execution_time 120
+    php_value max_input_time 120
 </IfModule>
 
 # Security Headers
@@ -32,7 +46,7 @@
     # viewer to embed YouTube and Facebook players. Without these hosts the
     # browser blocks the iframe and the player area stays blank.
     # img-src allows blob: URLs used by local image upload previews.
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.datatables.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; connect-src 'self'; frame-src 'self' https://www.google.com https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://www.facebook.com https://web.facebook.com;"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.datatables.net https://www.google.com https://www.gstatic.com https://cdn.canvasjs.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com https://cdn.datatables.net; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; connect-src 'self'; frame-src 'self' https://www.google.com https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://www.facebook.com https://web.facebook.com;"
     
     # Remove server signature
     Header always unset X-Powered-By

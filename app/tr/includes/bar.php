@@ -88,6 +88,9 @@ if (!empty($userId) && !empty($conn)) {
         #accordionSidebar .sidebar-logo { width:48px; height:48px; }
         #accordionSidebar .nav-item#logout-item { padding-top:6px; padding-bottom:6px; }
         .topbar { left:0 !important; right:0 !important; width:100% !important; z-index:1060 !important; height:70px; min-height:70px; padding-top:0; padding-bottom:0; }
+        /* viewport-fit=cover: keep the fixed bar's controls clear of a notch or
+           rounded corners when the phone is held sideways. */
+        .topbar { padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); }
         .topbar-toggle { flex:0 0 auto; margin:0 10px 0 0 !important; }
         .topbar .topbar-title { font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:48vw; }
         .topbar .user-role-text { display:none; }

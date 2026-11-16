@@ -25,6 +25,23 @@ function cleanupRegistrationFiles(array $paths): void
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     header('Content-Type: application/json');
+
+    // A request bigger than post_max_size reaches PHP with an empty $_POST and
+    // $_FILES. Say so plainly instead of falling through to the CSRF guard,
+    // which would answer "your form session expired" for a size problem.
+    $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($contentLength > 0 && empty($_POST) && empty($_FILES)) {
+        http_response_code(413);
+        header('Content-Type: application/json');
+        $postLimit = trim((string) ini_get('post_max_size'));
+        echo json_encode([
+            'status' => 413,
+            'msg'    => 'The upload is too large for the server' . ($postLimit !== '' ? ' (limit ' . $postLimit . ')' : '')
+                        . '. Remove a few documents or take smaller photos, then try again.',
+        ]);
+        exit;
+    }
+
     $uploadedFiles = [];
     $transactionStarted = false;
     try {
@@ -54,19 +71,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit;
         }
 
+        // Everything this request needs from the session has been read. Release
+        // the session lock before the heavy work so the page's notification poll
+        // (and the representative's other tabs) do not queue behind this upload.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+
         $leagueDocumentRequirements=[];
         $requirementStmt=$conn->prepare("SELECT r.id,r.applies_to,r.is_required,u.name FROM tbl_league_document_requirement r JOIN tbl_utility u ON u.id=r.document_type_id WHERE r.league_id=? ORDER BY r.id");
         $requirementStmt->bind_param('i',$leagueId); $requirementStmt->execute(); $requirementResult=$requirementStmt->get_result();
         while($requirement=$requirementResult->fetch_assoc()) $leagueDocumentRequirements[]=$requirement;
         $requirementStmt->close();
 
-        $availabilityStmt=$conn->prepare("SELECT publication_status,is_archived,registration_window_open,start_date,end_date,regis_start,regis_end,min_player,max_player FROM tbl_league WHERE id=? LIMIT 1");
+        $availabilityStmt=$conn->prepare("SELECT id,publication_status,is_archived,registration_window_open,start_date,end_date,regis_start,regis_end,min_player,max_player,max_team FROM tbl_league WHERE id=? LIMIT 1");
         $availabilityStmt->bind_param('i',$leagueId); $availabilityStmt->execute(); $availability=$availabilityStmt->get_result()->fetch_assoc(); $availabilityStmt->close();
-        if (!$availability || $availability['publication_status']!=='Published' || (int)$availability['is_archived']===1 || (int)$availability['registration_window_open']!==1) {
-            echo json_encode(['status'=>403,'msg'=>'This league is not currently available for registration.']); exit;
+        if (!$availability || $availability['publication_status']!=='Published' || (int)$availability['is_archived']===1) {
+            echo json_encode(['status'=>403,'state'=>'closed','msg'=>'This league is not currently available for registration.']); exit;
         }
-        
-        // Check league live status - only allow registration when league is "Open"
+
+        // The registration window, the league's live status and the organizer's
+        // manual close switch are all resolved by the shared gate
+        // (includes/registrationGate.php) — the same rules the league hero
+        // button and app/tr/register_team.php use. A date-only regis_end is
+        // inclusive of the whole closing day, so the POST can no longer reject
+        // an application on the last day of a window the UI still shows as open.
         require_once __DIR__ . '/../config/leagueStatus.php';
         $leagueLiveStatus = getLeagueStatus($availability);
         error_log(sprintf(
@@ -77,19 +106,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $availability['registration_window_open'] ?? 'null',
             date('Y-m-d')
         ));
-        if ($leagueLiveStatus !== 'Open') {
-            echo json_encode(['status'=>403,'msg'=>'Registration is only available when the league status is Open.']); exit;
+
+        $windowCheck = validateRegistrationWindow($availability, time());
+        if (!$windowCheck['valid']) {
+            echo json_encode([
+                'status' => 403,
+                'state'  => $windowCheck['state'] ?? 'closed',
+                'msg'    => $windowCheck['message'],
+            ]);
+            exit;
         }
-        
+
         $today = date('Y-m-d');
-        if (!empty($availability['regis_end']) && $today > $availability['regis_end']) {
-            echo json_encode(['status'=>403,'msg'=>'Registration for this league has already closed.']); exit;
-        }
         if (!empty($availability['end_date']) && $today > $availability['end_date']) {
-            echo json_encode(['status'=>403,'msg'=>'This league has already ended.']); exit;
-        }
-        if (!empty($availability['regis_start']) && $today < $availability['regis_start']) {
-            echo json_encode(['status'=>403,'msg'=>'Registration for this league has not opened yet.']); exit;
+            echo json_encode(['status'=>403,'state'=>'closed','msg'=>'This league has already ended.']); exit;
         }
 
         // Check duplicate registration

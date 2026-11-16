@@ -36,6 +36,15 @@ if (regForm) {
         if (!input) return;
         showFileSelectionFeedback(input);
         syncFileBlob(input);
+
+        // Large phone photos are downscaled in place; the feedback line under
+        // the input reports the new size and the draft keeps the smaller copy.
+        optimiseFileInput(input).then(optimised => {
+            if (optimised) syncFileBlob(input);
+            // Documents and dates only change on `change`, so refresh the
+            // summary here as well as on `input`.
+            validateForm();
+        });
     });
 }
 
@@ -82,6 +91,110 @@ function showFileSelectionFeedback(input) {
 }
 
 /* -------------------------------------------------------------------------
+   Upload size (mobile photos)
+   -------------------------------------------------------------------------
+   A phone photo is 3-8 MB per file and the form allows one document per
+   player, so a normal registration is tens of megabytes. Hosting limits are
+   far smaller (Heroku terminates uploads at ~30 s and its PHP post_max_size is
+   8 MB by default), which is why those submissions died with a bare
+   "Failed to fetch". Downscaling the picture in the browser fixes the cause:
+   ~4 MB becomes ~0.5 MB and a document photo stays perfectly legible.
+
+   Everything degrades to "send the original" if the browser cannot decode the
+   image, so a PDF or an exotic format is never blocked here.
+   ------------------------------------------------------------------------- */
+const REG_IMAGE_OPTIMISE_BYTES = 900 * 1024;   // leave already-small files alone
+const REG_IMAGE_MAX_EDGE = 2000;               // px on the long edge
+const REG_IMAGE_QUALITY = 0.85;
+
+function isOptimisableImage(file) {
+    if (!file) return false;
+    const type = String(file.type || '').toLowerCase();
+    return type === 'image/jpeg' || type === 'image/jpg' || type === 'image/png' || type === 'image/webp';
+}
+
+/** Resolves with a smaller JPEG copy, or null when the original should be used. */
+function optimiseImageFile(file) {
+    return new Promise(resolve => {
+        if (!isOptimisableImage(file) || file.size <= REG_IMAGE_OPTIMISE_BYTES) return resolve(null);
+        if (typeof document === 'undefined' || !document.createElement) return resolve(null);
+
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+            URL.revokeObjectURL(url);
+            try {
+                const naturalWidth = image.naturalWidth || image.width || 1;
+                const naturalHeight = image.naturalHeight || image.height || 1;
+                const scale = Math.min(1, REG_IMAGE_MAX_EDGE / Math.max(naturalWidth, naturalHeight));
+                const width = Math.max(1, Math.round(naturalWidth * scale));
+                const height = Math.max(1, Math.round(naturalHeight * scale));
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const context = canvas.getContext('2d');
+                if (!context) return resolve(null);
+
+                // White backing: PNG screenshots with transparency stay readable.
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, width, height);
+                context.drawImage(image, 0, 0, width, height);
+
+                canvas.toBlob(blob => {
+                    if (!blob || blob.size >= file.size) return resolve(null);
+                    const name = String(file.name || 'document').replace(/\.[^.]+$/, '') + '.jpg';
+                    resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }));
+                }, 'image/jpeg', REG_IMAGE_QUALITY);
+            } catch (error) {
+                resolve(null);
+            }
+        };
+        image.onerror = () => {
+            URL.revokeObjectURL(url);
+            resolve(null);
+        };
+        image.src = url;
+    });
+}
+
+/** Swaps the selected file for its optimised copy. No-op when not applicable. */
+function optimiseFileInput(input) {
+    if (!input || !input.files || !input.files.length) return Promise.resolve(false);
+    if (typeof DataTransfer === 'undefined') return Promise.resolve(false);
+
+    const file = input.files[0];
+    return optimiseImageFile(file).then(optimised => {
+        if (!optimised) return false;
+        try {
+            const transfer = new DataTransfer();
+            transfer.items.add(optimised);
+            input.files = transfer.files;
+        } catch (error) {
+            return false;
+        }
+
+        const feedback = input.parentElement?.querySelector(':scope > .file-selection-feedback');
+        if (feedback) {
+            const before = (file.size / 1048576).toFixed(1);
+            const after = (optimised.size / 1048576).toFixed(1);
+            feedback.textContent = `Optimised for upload: ${before} MB → ${after} MB.`;
+            feedback.classList.remove('invalid');
+        }
+        input.removeAttribute('aria-invalid');
+        return true;
+    });
+}
+
+/** Optimise every selected image on the form (used right before submit). */
+function optimiseSelectedImages() {
+    if (!regForm) return Promise.resolve();
+    const inputs = Array.from(regForm.querySelectorAll('input[type="file"]'))
+        .filter(input => input.files && input.files.length);
+    return Promise.all(inputs.map(input => optimiseFileInput(input))).then(() => undefined);
+}
+
+/* -------------------------------------------------------------------------
    Roster
    ------------------------------------------------------------------------- */
 function initRoster(rowCount) {
@@ -118,23 +231,23 @@ function addRow(showLimitMessage = true) {
       ? REG_PLAYER_DOCUMENTS.map(doc => `<div class="player-document-field document-field-block mb-2"><label class="small fw-semibold d-block">${escapeDocHtml(doc.name)}${doc.is_required == 1 ? '<span class="required-marker" aria-hidden="true">*</span><span class="visually-hidden"> required</span>' : ''}</label><input type="file" data-document-scope="player" data-document-requirement="${doc.id}" name="player_documents[${doc.id}][]" class="form-control form-control-sm mb-1" accept=".pdf,.jpg,.jpeg,.png,.bmp,.webp,application/pdf,image/jpeg,image/png,image/bmp,image/webp" ${doc.is_required == 1 ? 'required' : ''}><small class="text-muted d-block">${escapeDocHtml(doc.instructions || '')}</small><small class="text-muted d-block">PDF, JPG, PNG, BMP, or WebP · Maximum 10 MB.</small></div>`).join('')
       : `<div class="player-document-field document-field-block"><label class="small fw-semibold d-block">Eligibility document<span class="required-marker" aria-hidden="true">*</span><span class="visually-hidden"> required</span></label><input type="file" data-document-scope="legacy_player" name="player_document[]" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.bmp,.webp,application/pdf,image/jpeg,image/png,image/bmp,image/webp" required><small class="text-muted d-block mt-1">PDF, JPG, PNG, BMP, or WebP · Maximum 10 MB.</small></div>`;
     row.innerHTML = `
-        <td><input type="text" name="player_name[]" class="form-control" minlength="2" maxlength="100" placeholder="Full name" required oninput="validateForm()"></td>
-        <td><input type="date" name="player_birthdate[]" class="form-control" max="${REG_TODAY}" required onchange="validateForm()"></td>
-        <td>
+        <td data-label="Player name"><input type="text" name="player_name[]" class="form-control" minlength="2" maxlength="100" placeholder="Full name" required oninput="validateForm()"></td>
+        <td data-label="Birthdate"><input type="date" name="player_birthdate[]" class="form-control" max="${REG_TODAY}" required onchange="validateForm()"></td>
+        <td data-label="Position / role">
              <input type="text" name="player_role[]" class="form-control" minlength="2" maxlength="50" placeholder="Position / role" required>
         </td>
-        <td><input type="number" name="jersey_number[]" class="form-control" min="0" max="999" step="1" placeholder="No." required oninput="validateForm()"></td>
-        <td>
+        <td data-label="Jersey no."><input type="number" name="jersey_number[]" class="form-control" min="0" max="999" step="1" placeholder="No." required oninput="validateForm()"></td>
+        <td data-label="Gender">
             <select name="gender[]" class="form-select" required onchange="validateForm()">
                 <option value="">Select</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
             </select>
         </td>
-        <td>
+        <td data-label="Documents">
             ${documentInputs}
         </td>
-        <td class="text-center">
+        <td data-label="" class="text-center">
             <button type="button" class="remove-player-button" onclick="removeRow(this)" title="Remove player" aria-label="Remove player"><i class="bi bi-trash3"></i></button>
         </td>
     `;
@@ -273,7 +386,75 @@ function removeRow(btn) {
     rebuildFileBlobs();
 }
 
-function validateForm() {
+/**
+ * Human label for one control inside the registration form.
+ * Used by the validation summary so a phone user is told *which* player and
+ * *which* document still needs attention (the old summary only listed roster
+ * counts, while the browser silently blocked on the off-screen file inputs).
+ */
+function fieldLabel(input) {
+    const row = input.closest('tr');
+    const rows = Array.from(document.querySelectorAll('#playerBody tr'));
+    const rowIndex = row ? rows.indexOf(row) + 1 : 0;
+    const labels = {
+        'team_name': 'Team name',
+        'team_image': 'Team logo / image',
+        'barangay': 'Barangay / school',
+        'player_name[]': 'Player name',
+        'player_birthdate[]': 'Birthdate',
+        'player_role[]': 'Position / role',
+        'jersey_number[]': 'Jersey number',
+        'gender[]': 'Gender'
+    };
+    const name = input.getAttribute('name') || '';
+    if (Object.prototype.hasOwnProperty.call(labels, name)) {
+        return rowIndex ? `Player ${rowIndex} — ${labels[name]}` : labels[name];
+    }
+
+    const block = input.closest('.document-field-block');
+    const labelEl = block ? block.querySelector('label') : null;
+    const docLabel = labelEl ? labelEl.textContent.replace(/\*/g, '').trim() : 'Document';
+    return rowIndex ? `Player ${rowIndex} — ${docLabel}` : docLabel;
+}
+
+/**
+ * Every required control that is still invalid, as readable lines.
+ *
+ * The form is novalidate: the browser bubble used to be the only feedback, and
+ * on a phone the required document inputs sit off-screen in the roster table,
+ * so tapping Submit appeared to do nothing.
+ */
+function collectRequiredFieldIssues() {
+    const issues = [];
+    const seen = new Set();
+
+    document.querySelectorAll('#registerTeam [required]').forEach(input => {
+        if (input.disabled || input.type === 'hidden' || input.type === 'submit') return;
+        if (input.checkValidity()) return;
+
+        const label = fieldLabel(input);
+        let message;
+        if (input.type === 'file') {
+            message = `${label}: choose a file.`;
+        } else if (input.validity && input.validity.valueMissing) {
+            message = `${label}: required.`;
+        } else {
+            message = `${label}: ${input.validationMessage || 'invalid value'}.`;
+        }
+
+        const key = `${label}|${message}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        issues.push(message);
+
+        input.classList.add('player-field-invalid');
+        input.setAttribute('aria-invalid', 'true');
+    });
+
+    return issues;
+}
+
+function validateForm(includeRequired = false) {
     let issues = [];
     let tbody = document.getElementById("playerBody");
     if (!tbody) return;
@@ -388,6 +569,14 @@ function validateForm() {
 
     // Add age issues
     issues = issues.concat(ageIssues);
+
+    // Required fields, documents included. Listed only when the caller asks
+    // (i.e. right before submit): during normal editing the roster-count rules
+    // already explain the state, and a full list of empty 5-player fields would
+    // bury it on the first render.
+    if (includeRequired) {
+        issues = issues.concat(collectRequiredFieldIssues());
+    }
 
     // Display validation summary
     let summaryDiv = document.getElementById("validationSummary");
@@ -1005,14 +1194,37 @@ function closeRegistrationProgress() {
 }
 
 if (regForm) {
-    regForm.addEventListener('submit', function (e) {
+    regForm.addEventListener('submit', async function (e) {
         e.preventDefault();
         const submitButton = document.getElementById('registerTeamSubmit');
         if (submitButton.disabled || regSubmitting) return;
 
-        let summaryDiv = document.getElementById("validationSummary");
-        if (!summaryDiv.classList.contains('d-none')) {
-            alert('Please fix validation issues before submitting.');
+        // Refresh the summary from the live form (required fields and documents
+        // included) so the gate below can never be stale.
+        validateForm(true);
+
+        const summaryDiv = document.getElementById("validationSummary");
+        if (summaryDiv && !summaryDiv.classList.contains('d-none')) {
+            const issueCount = document.querySelectorAll('#validationList li').length;
+            const firstInvalid = regForm.querySelector('.player-field-invalid, input:invalid');
+            summaryDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (firstInvalid) {
+                window.setTimeout(() => {
+                    if (typeof firstInvalid.focus === 'function') {
+                        firstInvalid.focus({ preventScroll: true });
+                    }
+                }, 320);
+            }
+            if (window.Swal) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Check the highlighted fields',
+                    text: 'Please fix the ' + (issueCount || 'highlighted') + ' item(s) listed above, then submit again.',
+                    confirmButtonText: 'OK'
+                });
+            } else {
+                alert('Please fix the highlighted fields before submitting.');
+            }
             return;
         }
 
@@ -1039,11 +1251,22 @@ if (regForm) {
         // Show loading indicator (frame + typography come from lms-modal.css)
         showRegistrationProgress();
 
+        // Downscale the selected photos before they leave the device (drafts and
+        // restored files can still hold full-resolution originals).
+        await optimiseSelectedImages();
+
         const formData = new FormData(regForm);
+
+        // Heroku (and most proxies) cut a request off long before the browser
+        // gives up, so bound the wait: a hung upload otherwise looks like a dead
+        // button. The draft is saved, so retrying after the timeout is cheap.
+        const controller = new AbortController();
+        const abortTimer = window.setTimeout(() => controller.abort(), 180000);
 
         fetch(REG_CFG.api, {
             method: 'POST',
             body: formData,
+            signal: controller.signal,
             headers: {
                 'Accept': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest'
@@ -1086,7 +1309,7 @@ if (regForm) {
                 return;
             }
 
-            if (data.status === 401) {
+            if (data.status === 401 || data.status === 419) {
                 saveDraftNow();
                 closeRegistrationProgress();
                 Swal.fire({
@@ -1102,10 +1325,27 @@ if (regForm) {
 
             if (data.status === 403) {
                 closeRegistrationProgress();
+                const state = String(data.state || '');
+                const closed = state === 'closed' || state === 'upcoming';
+                Swal.fire({
+                    icon: closed ? 'info' : 'error',
+                    title: closed ? (state === 'upcoming' ? 'Registration not open yet' : 'Registration closed') : 'Not allowed',
+                    text: data.msg || 'You are not allowed to register for this league.',
+                    confirmButtonText: closed ? 'Back to league' : 'OK'
+                }).then(() => {
+                    if (closed && REG_CFG.backUrl) window.location.href = REG_CFG.backUrl;
+                });
+                return;
+            }
+
+            // The request body exceeded post_max_size: PHP never saw the fields,
+            // so the answer is a dedicated 413 instead of a bogus 401/419.
+            if (data.status === 413) {
+                closeRegistrationProgress();
                 Swal.fire({
                     icon: 'error',
-                    title: 'Not allowed',
-                    text: data.msg || 'You are not allowed to register for this league.',
+                    title: 'Files too large',
+                    text: data.msg || 'The upload is too large for the server. Remove a few documents or take smaller photos, then try again.',
                     confirmButtonText: 'OK'
                 });
                 return;
@@ -1128,14 +1368,30 @@ if (regForm) {
         .catch(error => {
             console.error('Registration error:', error);
             closeRegistrationProgress();
+
+            // fetch() rejects with a bare TypeError ("Failed to fetch" /
+            // "Load failed") when the connection dies mid-upload — the browser
+            // gives the user nothing actionable in that message. Translate it.
+            const timedOut = !!error && error.name === 'AbortError';
+            const network  = !timedOut && /failed to fetch|load failed|networkerror/i.test(String((error && error.message) || ''));
+            let message;
+            if (timedOut) {
+                message = 'The upload took too long and was stopped. Your draft is saved on this device — check your connection and submit again.';
+            } else if (network) {
+                message = 'The connection dropped while sending your registration. Your draft is saved on this device — check your mobile data / Wi-Fi and try again (smaller photos upload more reliably).';
+            } else {
+                message = (error && error.message) || 'An error occurred during registration. Please try again.';
+            }
+
             Swal.fire({
                 icon: 'error',
                 title: 'Registration Failed',
-                text: error.message || 'An error occurred during registration. Please try again.',
+                text: message,
                 confirmButtonText: 'OK'
             });
         })
         .finally(() => {
+            window.clearTimeout(abortTimer);
             regSubmitting = false;
             submitButton.disabled = false;
             submitButton.innerHTML = submitButtonHtml;

@@ -15,6 +15,9 @@ if (file_exists(__DIR__ . '/../config/sportRules.php')) {
 }
 
 require_once __DIR__ . '/rosterSize.php';
+// The registration-window rules are shared with the league hero and the
+// registration page (see validateRegistrationWindow() below).
+require_once __DIR__ . '/registrationGate.php';
 
 if (!function_exists('getLeagueRequirements')) {
     function getLeagueRequirements($conn, $leagueId)
@@ -29,27 +32,86 @@ if (!function_exists('getLeagueRequirements')) {
 }
 
 if (!function_exists('validateRegistrationWindow')) {
-    function validateRegistrationWindow($league)
+    /**
+     * Registration-window gate for the submit path.
+     *
+     * Delegates to resolveRegistrationWindow() / getLeagueStatus() so the POST
+     * endpoint can never disagree with the league hero button or the
+     * registration page it was reached from.
+     *
+     * A date-only regis_end is inclusive of the whole closing day there. The
+     * previous inline DateTime() math parsed it as 00:00 and rejected every
+     * application submitted on the last day, while the page still showed the
+     * form as open (and "Registration closed on … 12:00 AM" was the result).
+     *
+     * @param array    $league League row (regis_start, regis_end,
+     *                         registration_window_open, …).
+     * @param int|null $nowTs  Reference timestamp; tests pass a fixed clock.
+     *
+     * @return array{valid:bool,state:string,message:string}
+     */
+    function validateRegistrationWindow($league, ?int $nowTs = null)
     {
-        $now = new DateTime();
-        $regisStart = new DateTime($league['regis_start']);
-        $regisEnd = new DateTime($league['regis_end']);
-        
-        if ($now < $regisStart) {
+        if (!function_exists('resolveRegistrationWindow')) {
+            require_once __DIR__ . '/registrationGate.php';
+        }
+
+        $league       = (array) $league;
+        $nowTs        = $nowTs ?? time();
+        // A live status is required by the shared rule (a Completed or Ongoing
+        // league is never open), and it is also what the hero button uses. The
+        // reference date comes from the same clock as the window math so tests
+        // can pin both.
+        $referenceDate = date('Y-m-d', $nowTs);
+        $leagueStatus  = function_exists('getLeagueStatus')
+            ? getLeagueStatus($league, null, null, null, $referenceDate)
+            : 'Open';
+        $window        = resolveRegistrationWindow($league, $leagueStatus, false, $nowTs);
+        $windowOpen   = (int) ($league['registration_window_open'] ?? 0) === 1;
+        $opensLabel   = $window['regStartTs'] ? date('M d, Y', $window['regStartTs']) : '';
+        $closesLabel  = $window['regEndTs'] ? date('M d, Y', $window['regEndTs']) : '';
+
+        if ($window['regOpen']) {
+            return ['valid' => true, 'state' => 'open', 'message' => ''];
+        }
+
+        if ($window['registrationUpcoming']) {
             return [
-                'valid' => false,
-                'message' => 'Registration has not started yet. Registration opens on ' . $regisStart->format('M d, Y h:i A')
+                'valid'   => false,
+                'state'   => 'upcoming',
+                'message' => 'Registration has not started yet. Registration opens on ' . $opensLabel . '.',
             ];
         }
-        
-        if ($now > $regisEnd) {
+
+        if (!$windowOpen) {
             return [
-                'valid' => false,
-                'message' => 'Registration has ended. Registration closed on ' . $regisEnd->format('M d, Y h:i A')
+                'valid'   => false,
+                'state'   => 'closed',
+                'message' => 'Registration for this league has been closed by the organizer.',
             ];
         }
-        
-        return ['valid' => true];
+
+        if ($window['regEndTs'] && $nowTs > $window['regEndTs']) {
+            return [
+                'valid'   => false,
+                'state'   => 'closed',
+                'message' => 'Registration has ended. Registration closed on ' . $closesLabel . '.',
+            ];
+        }
+
+        if ($leagueStatus !== 'Open') {
+            return [
+                'valid'   => false,
+                'state'   => 'closed',
+                'message' => 'Registration is only available while the league is open (current status: ' . $leagueStatus . ').',
+            ];
+        }
+
+        return [
+            'valid'   => false,
+            'state'   => 'closed',
+            'message' => 'Registration is not available for this league right now.',
+        ];
     }
 }
 

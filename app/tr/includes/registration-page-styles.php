@@ -86,8 +86,44 @@
 
     @media (max-width: 991.98px) {
         .reg-page .roster-scroll-hint { display: block; }
-        .reg-page .reg-actionbar { position: static; }
+        .reg-page .reg-actionbar { position: sticky; }
     }
+
+    /* ---------- Phones: roster rows become labelled cards -------------------- */
+    /* The roster is a 7-column table on desktop. On a phone the required
+       document column sat ~900px to the right, so a representative could fill
+       the visible fields, tap Submit, and be blocked by an off-screen required
+       input with no message they could see. Each row is now a card whose every
+       field is labelled, so nothing is hidden behind a horizontal swipe. */
+    @media (max-width: 767.98px) {
+        .reg-page .roster-scroll-hint { display: none; }
+        .reg-page .roster-table-wrap { border: 0; background: transparent; overflow: visible; }
+        .reg-page #playerTable { min-width: 0; display: block; }
+        .reg-page #playerTable thead { display: none; }
+        .reg-page #playerTable tbody { display: block; }
+        .reg-page #playerTable tr {
+            display: block; margin-bottom: 12px; padding: 12px 14px;
+            border: 1px solid #d4e0ec; border-radius: 10px; background: #fff;
+            box-shadow: 0 4px 14px rgba(28, 57, 90, .06);
+        }
+        .reg-page #playerTable td {
+            display: grid; grid-template-columns: minmax(92px, 34%) minmax(0, 1fr);
+            gap: 10px; align-items: center;
+            padding: 6px 0; border: 0; background: transparent !important;
+        }
+        .reg-page #playerTable td::before {
+            content: attr(data-label);
+            color: #53617a; font-size: .68rem; font-weight: 700;
+            letter-spacing: .04em; text-transform: uppercase; line-height: 1.35;
+        }
+        .reg-page #playerTable td[data-label=""]::before { content: none; }
+        .reg-page #playerTable td[data-label=""] {
+            display: flex; justify-content: flex-end; padding-top: 10px;
+        }
+        .reg-page #playerTable input,
+        .reg-page #playerTable select { min-width: 0; width: 100%; }
+    }
+
     @media (max-width: 575.98px) {
         .reg-page { padding:14px; }
         .reg-page .reg-shell { padding:14px; }
@@ -95,7 +131,24 @@
         .reg-page .registration-section { padding:15px; }
         .reg-page .requirements-banner { padding:14px; }
         .reg-page .section-heading { align-items:flex-start;flex-direction:column; }
-        .reg-page .reg-actionbar { flex-direction:column;align-items:stretch; }
+        .reg-page .reg-actionbar {
+            flex-direction:column;align-items:stretch;
+            position:sticky;bottom:0;
+            padding-bottom:calc(15px + env(safe-area-inset-bottom));
+        }
         .reg-page .reg-actionbar-meta { margin-right:0; }
+
+        /* iOS Safari zooms into any focused control smaller than 16px, which
+           pushed the rest of the row — and every validation message — off the
+           visible area. */
+        .reg-page .form-control,
+        .reg-page .form-select,
+        .reg-page .roster-table input,
+        .reg-page .roster-table select { font-size:16px; }
+        .reg-page .form-control,
+        .reg-page .form-select { min-height:46px; }
+        .reg-page .roster-table input,
+        .reg-page .roster-table select { min-height:44px; }
+        .reg-page .remove-player-button { width:44px; height:44px; }
     }
 </style>

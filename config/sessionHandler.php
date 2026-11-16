@@ -39,8 +39,12 @@ function initializeSecureSession(): void
     }
     }
 
-    // Set session timeout (30 minutes of inactivity)
-    $timeout = 1800; // 30 minutes
+    // Idle timeout. A team registration is long — five players plus one
+    // document each — and phone browsers suspend timers while the camera or
+    // photo picker is open, so a representative can pass 30 minutes without a
+    // request and then be logged out at submit. Representatives get a longer
+    // window; every other role keeps the original 30 minutes.
+    $timeout = ((int) ($_SESSION['lms_role'] ?? 0) === 2) ? 7200 : 1800;
     if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > $timeout)) {
         // Session expired
         session_unset();

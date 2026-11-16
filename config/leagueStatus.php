@@ -90,8 +90,17 @@ if (!function_exists('leagueSlotState')) {
     }
 }
 
-function getLeagueStatus($a, $b = null, $regis_start = null, $regis_end = null) {
-    $today = date('Y-m-d');
+/**
+ * @param array|string $a           League row, or start_date.
+ * @param string|null  $b           end_date (only when $a is a string).
+ * @param string|null  $regis_start Registration start (only when $a is a string).
+ * @param string|null  $regis_end   Registration end (only when $a is a string).
+ * @param string|null  $today       Reference date (Y-m-d); defaults to today.
+ *                                  Tests pass a fixed clock so the status and
+ *                                  the registration gate stay deterministic.
+ */
+function getLeagueStatus($a, $b = null, $regis_start = null, $regis_end = null, ?string $today = null) {
+    $today = $today ?? date('Y-m-d');
 
     // Normalize inputs - allow passing $league_row as first arg
     $league = null;
