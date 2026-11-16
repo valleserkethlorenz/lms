@@ -136,8 +136,8 @@ include __DIR__ . '/includes/header.php';
     .signup-card .signup-verify-field{margin-bottom:14px}
     .signup-card .signup-email-row{display:flex;gap:8px;align-items:stretch}
     .signup-card .signup-email-row .form-control{flex:1 1 auto;min-width:0}
-    .signup-card .btn-signup-code{border-radius:10px;font-weight:600;font-size:13px;padding:0 18px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#09173c;white-space:nowrap;transition:all .2s;min-height:42px}
-    .signup-card .btn-signup-code:hover:not(:disabled){background:#eef2f7;border-color:#94a3b8}
+    .signup-card .btn-signup-code{border-radius:10px;font-weight:600;font-size:13px;padding:0 18px;border:1.5px solid #09173c;background:#09173c;color:#fff;white-space:nowrap;transition:all .2s;min-height:42px}
+    .signup-card .btn-signup-code:hover:not(:disabled){background:#07305a;border-color:#07305a;color:#fff}
     .signup-card .btn-signup-code:disabled{opacity:.65;cursor:not-allowed}
     .signup-card .signup-code-hint{margin:7px 0 0;font-size:11.5px;color:#64748b}
     .signup-card .btn-signup-verify{width:100%;margin-top:4px;border:none;border-radius:10px;padding:12px 20px;font-weight:600;font-size:14px;color:#fff;background:linear-gradient(135deg,#09173c 0%,#1a3a6b 100%);box-shadow:0 4px 14px rgba(9,23,60,.18);transition:all .2s}
@@ -277,11 +277,11 @@ include __DIR__ . '/includes/header.php';
     .signup-card .btn-signup-code{
         border-radius:8px;font-size:12px;font-weight:600;
         padding:8px 14px;min-height:42px;
-        border:1px solid #dfe6ef;background:#f8fafc;color:#53617a;
+        border:1px solid #09173c;background:#09173c;color:#fff;
         white-space:nowrap;
     }
     .signup-card .btn-signup-code:hover:not(:disabled){
-        background:#eef4ff;border-color:#cbd9ee;color:#09173c;
+        background:#07305a;border-color:#07305a;color:#fff;
     }
     .signup-card .signup-verified-chip{
         background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;
