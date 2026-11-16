@@ -1151,7 +1151,12 @@ function validatePlayerDocuments($filesArray, $playerNamesArray, array $document
                 @unlink($file['path']); // remove local copy after successful cloud upload
                 $storedName = $cloudDoc['secure_url'];
             } catch (\Throwable $e) {
-                @unlink($file['path']); $reject('storage', 'The document could not be stored to cloud.'); continue;
+                // Never block a registration because the cloud is unreachable.
+                // The validated local copy stays available for the organizer to
+                // review while this instance lives, and the failure is logged so
+                // the deployment problem is not silent.
+                error_log('[DOCUMENT] Cloudinary upload failed; keeping the local copy for manual review: '
+                    . sanitizeForLog($e->getMessage()));
             }
         }
         if ($status === 'unavailable') {

@@ -5,6 +5,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 require_once __DIR__ . '/../../../config/dbconnect.php';
 require_once __DIR__ . '/../../../includes/notificationHelper.php';
 require_once __DIR__ . '/../../../includes/documentValidator.php';
+require_once __DIR__ . '/../../../includes/documentAssets.php';
 require_once __DIR__ . '/../../../config/auth_guard.php';
 require_once __DIR__ . '/../../../includes/teamCorrectionDeadline.php';
 require_once __DIR__ . '/../../../includes/rosterSize.php';
@@ -173,8 +174,9 @@ if ($hasAnyUpload) {
             $oldRow = $oldChk->get_result()->fetch_assoc();
             $oldChk->close();
             if (!empty($oldRow['document'])) {
-                $oldFile = documentStoredPath($oldRow['document']);
-                if ($oldFile && file_exists($oldFile)) unlink($oldFile);
+                // Stored document, local or Cloudinary — deleteStoredDocument()
+                // removes the cloud asset as well as a file on disk.
+                deleteStoredDocument($oldRow['document']);
             }
         }
     }
@@ -212,7 +214,7 @@ if ($hasReplacement) {
     }
     $replacementResult=validatePlayerDocuments($files,$labels,$documentTypes);
     if(!empty($replacementResult['blurry'])) {
-        foreach($replacementResult['valid'] as $stored) { $path=documentStoredPath($stored,false); if($path) @unlink($path); }
+        foreach($replacementResult['valid'] as $stored) { deleteStoredDocument($stored); }
         $firstIssue=reset($replacementResult['issues']);
         echo json_encode(['status'=>400,'msg'=>documentQualityMessage(is_array($firstIssue) ? $firstIssue : [])]); exit;
     }
@@ -329,8 +331,7 @@ foreach($replacementUploads as $documentId=>$replacement) {
         $syncStmt=$conn->prepare("UPDATE tbl_player SET document=? WHERE id=? AND team_id=? AND document=?");
         $syncStmt->bind_param('siis',$replacement['stored'],$replacement['player_id'],$teamId,$replacement['old']); $syncStmt->execute(); $syncStmt->close();
     }
-    $oldPath=documentStoredPath($replacement['old']);
-    if($oldPath && basename(dirname($oldPath))==='documents') @unlink($oldPath);
+    if(!empty($replacement['old'])) deleteStoredDocument($replacement['old']);
 }
 
 // Notify organizer

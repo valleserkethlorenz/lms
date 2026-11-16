@@ -85,3 +85,46 @@ an accidental backdrop click or refresh.
 - [ ] Browser sign-off: create one league end-to-end (image + guideline document
       + document requirement), desktop and mobile widths
 
+## Registration window + document storage (2026-11-16)
+
+Problem: on the closing day of a league’s registration window the page, the
+hero button and `getLeagueStatus()` all read the window as open, but the POST
+endpoint rejected every submission with “Registration has ended. Registration
+closed on <date> 12:00 AM”. `includes/eligibilityValidator.php` parsed the
+date-only `regis_end` (the organizer form is `<input type="date">`) with
+`new DateTime()`, i.e. 00:00, while `includes/registrationGate.php` treats the
+end date as inclusive of the whole day.
+
+- [x] `validateRegistrationWindow()` now delegates to
+      `resolveRegistrationWindow()` + `getLeagueStatus()` (one rule set for the
+      hero, the page and the POST) and returns `{valid, state, message}`
+- [x] `getLeagueStatus()` accepts a reference date so the POST gate and the
+      tests share one clock
+- [x] `registerTeam.php` answers `403 {state}` from that gate and releases the
+      session lock before the heavy work
+- [x] `413` for a body larger than `post_max_size` instead of a bogus 419
+- [x] Client: `novalidate` + a complete required-field summary (documents
+      included), photo downscaling before upload, upload timeout and readable
+      network errors, `419` handled like `401`
+- [x] Mobile roster rendered as labelled cards (≤767 px), 16 px controls and a
+      sticky action bar (≤575 px)
+- [x] Heroku limits: `fpm_custom.conf` + `-F` in the Procfile, mirrored in
+      `.user.ini` and `.htaccess`
+- [x] Submitted documents: rollbacks and replacements now delete the Cloudinary
+      asset as well (`includes/documentAssets.php`), and a cloud outage falls
+      back to the validated local copy instead of rejecting the submission
+- [x] League overview documents download through
+      `includes/downloadLeagueDocument.php` (Cloudinary links used to open in a
+      new tab; `download` is ignored cross-origin)
+- [x] Tests: `RegistrationWindowGateTest`, `DocumentAssetsTest`
+- [ ] Browser sign-off on a real phone: closing-day submission, missing-document
+      summary, six camera photos, correction resubmission
+- [ ] Move submitted documents to authenticated (signed) Cloudinary delivery —
+      the stored URLs are currently public-but-unlisted
+- [x] Document preview modal (organizer team review + representative team view):
+      zoom + pan for images **and** PDFs — toolbar buttons, mouse wheel,
+      two-finger pinch, double-tap, drag to pan, and `+` / `−` / `0` shortcuts.
+      A PDF keeps its own viewer at 100% and gets a pointer shield once scaled;
+      "Open in new tab" was added for phones that prefer the native PDF viewer.
+      Shared component: `includes/documentPreviewModal.php`
+

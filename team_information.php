@@ -22,7 +22,7 @@ $end_date = $end_date ?? '';
 $guidelineDocuments = [];
 $organizer = [];
 if ($id > 0) {
-    $guidelineStmt = $conn->prepare("SELECT stored_name,original_name FROM tbl_league_guideline_document WHERE league_id=? AND is_archived=0 ORDER BY id");
+    $guidelineStmt = $conn->prepare("SELECT id,stored_name,original_name FROM tbl_league_guideline_document WHERE league_id=? AND is_archived=0 ORDER BY id");
     $guidelineStmt->bind_param('i', $id);
     $guidelineStmt->execute();
     $guidelineResult = $guidelineStmt->get_result();
@@ -604,11 +604,11 @@ $orgPhoneDial = preg_replace('/[^0-9+]/', '', $orgPhone);
                 <?php if ($docCount > 0): ?>
                     <?php foreach ($guidelineDocuments as $guideline):
                         $docName    = (string) ($guideline['original_name'] ?? 'Document');
-                        $docStored  = (string) ($guideline['stored_name'] ?? '');
-                        $docIsCloud = StorageService::isCloudinary($docStored);
-                        // Cloudinary files already carry an absolute URL; local
-                        // uploads live under assets/documents/.
-                        $docHref    = $docIsCloud ? $docStored : 'assets/documents/' . rawurlencode($docStored);
+                        // Both local and Cloudinary uploads are streamed through
+                        // the app so clicking a document downloads it (the HTML
+                        // download attribute is ignored for cross-origin URLs,
+                        // which used to open Cloudinary files in a new tab).
+                        $docHref    = 'includes/downloadLeagueDocument.php?id=' . (int) ($guideline['id'] ?? 0);
                         $docExt     = strtolower(pathinfo($docName, PATHINFO_EXTENSION));
                         if ($docExt === 'pdf') {
                             $docIcon = 'bi-file-earmark-pdf-fill';
@@ -622,7 +622,7 @@ $orgPhoneDial = preg_replace('/[^0-9+]/', '', $orgPhone);
                             $docIcon = 'bi-file-earmark-text-fill';
                         }
                     ?>
-                        <a class="ov-doc" href="<?= htmlspecialchars($docHref, ENT_QUOTES, 'UTF-8') ?>" <?= $docIsCloud ? 'target="_blank" rel="noopener"' : 'download' ?> title="Download <?= htmlspecialchars($docName, ENT_QUOTES, 'UTF-8') ?>">
+                        <a class="ov-doc" href="<?= htmlspecialchars($docHref, ENT_QUOTES, 'UTF-8') ?>" download title="Download <?= htmlspecialchars($docName, ENT_QUOTES, 'UTF-8') ?>">
                             <span class="ov-doc-icon"><i class="bi <?= $docIcon ?>"></i></span>
                             <span class="ov-doc-name"><?= htmlspecialchars($docName, ENT_QUOTES, 'UTF-8') ?></span>
                             <i class="bi bi-download ov-doc-arrow"></i>

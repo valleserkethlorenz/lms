@@ -1,10 +1,16 @@
 <?php
-include '../config/dbconnect.php';
-require_once '../config/auth_guard.php';
-require_once '../config/rateLimiter.php';
-include '../includes/documentValidator.php';
-include '../includes/eligibilityValidator.php';
-include '../includes/notificationHelper.php';
+// Anchor every require to this file's directory (__DIR__) instead of the
+// process working directory, so $conn from dbconnect.php is always in scope
+// no matter where the endpoint is invoked from.
+require_once __DIR__ . '/../config/dbconnect.php';
+require_once __DIR__ . '/../config/auth_guard.php';
+require_once __DIR__ . '/../config/rateLimiter.php';
+require_once __DIR__ . '/documentValidator.php';
+require_once __DIR__ . '/documentAssets.php';
+require_once __DIR__ . '/eligibilityValidator.php';
+require_once __DIR__ . '/notificationHelper.php';
+
+/** @var mysqli $conn */
 
 class RegistrationValidationException extends RuntimeException
 {
@@ -17,9 +23,23 @@ class RegistrationValidationException extends RuntimeException
 function cleanupRegistrationFiles(array $paths): void
 {
     foreach (array_unique($paths) as $path) {
-        if (is_string($path) && $path !== '' && is_file($path)) {
-            @unlink($path);
+        if (!is_string($path) || $path === '') {
+            continue;
         }
+        // Accepted documents are handed back as a Cloudinary URL when cloud
+        // storage is enabled, so a rollback has to remove the cloud asset too
+        // (not just a file on the instance's disk).
+        if (StorageService::isCloudinary($path)) {
+            deleteStoredDocument($path);
+            continue;
+        }
+        // Absolute path (team image written by move_uploaded_file()).
+        if (is_file($path)) {
+            @unlink($path);
+            continue;
+        }
+        // Bare stored document name.
+        deleteStoredDocument($path);
     }
 }
 
@@ -330,6 +350,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'public_id' => time() . '_' . bin2hex(random_bytes(4)),
             ]);
             $imageName = $cloudTeamImg['secure_url'];
+            // Track it so a rolled-back registration also removes the cloud image.
+            $uploadedFiles[] = $imageName;
         } else {
             $uploadDir = realpath(__DIR__ . '/../assets/uploads/');
             if (!$uploadDir) {
@@ -346,7 +368,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
 
         $typedUploads=[]; $legacyPlayerDocs=[]; $preliminaryDocumentFlags=[]; $documentFieldErrors=[];
-        $documentDir = documentStorageDirectory();
+        // Typed requirements accept the stored value as-is: a Cloudinary secure
+        // URL when cloud storage is enabled, otherwise a local file name.
         if ($leagueDocumentRequirements) {
             foreach ($leagueDocumentRequirements as $requirement) {
                 $reqId=(int)$requirement['id'];
@@ -362,7 +385,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         $documentFieldErrors[]=['scope'=>'team','requirement_id'=>$reqId,'name'=>'team_documents['.$reqId.']','index'=>0,'message'=>documentQualityMessage($issue)];
                         continue;
                     }
-                    $uploadedFiles[]=$documentDir.DIRECTORY_SEPARATOR.$checked['valid'][0];
+                    $uploadedFiles[]=$checked['valid'][0];
                     $quality=$checked['quality'][0] ?? 'Pending'; $qualityDetails=$checked['quality_details'][0] ?? '';
                     $qualityFlag=documentQualityFlag($requirement['name'],$quality,$qualityDetails,isset($checked['unavailable'][0]));
                     if ($qualityFlag!==null) $preliminaryDocumentFlags[]=$qualityFlag;
@@ -373,7 +396,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $files=['name'=>$names,'tmp_name'=>$_FILES['player_documents']['tmp_name'][$reqId] ?? [],'error'=>$_FILES['player_documents']['error'][$reqId] ?? [],'size'=>$_FILES['player_documents']['size'][$reqId] ?? []];
                     $mimes=[]; foreach(($files['tmp_name'] ?? []) as $i=>$tmp) if($tmp) $mimes[$i]=(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
                     $checked=validatePlayerDocuments($files,$playerNames,array_fill_keys(array_keys($names),$requirement['name']));
-                    foreach($checked['valid'] as $storedName) $uploadedFiles[]=$documentDir.DIRECTORY_SEPARATOR.$storedName;
+                    foreach($checked['valid'] as $storedName) $uploadedFiles[]=$storedName;
                     foreach ($playerNames as $i=>$playerName) {
                         if (!empty($names[$i]) && empty($checked['valid'][$i])) {
                             $issue=$checked['issues'][$i] ?? [];
@@ -399,7 +422,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $docNames = $_FILES['player_document']['name'] ?? [];
             foreach ($playerNames as $i => $name) if (empty($docNames[$i])) throw new RegistrationValidationException('Player '.($i+1).' is missing an eligibility document.');
             $validation = validatePlayerDocuments($_FILES['player_document'] ?? [], $playerNames);
-            foreach($validation['valid'] as $storedName) $uploadedFiles[]=$documentDir.DIRECTORY_SEPARATOR.$storedName;
+            foreach($validation['valid'] as $storedName) $uploadedFiles[]=$storedName;
             if (!empty($validation['blurry'])) {
                 foreach($validation['issues'] as $failedIndex=>$issue) {
                     $documentFieldErrors[]=['scope'=>'legacy_player','player_index'=>(int)$failedIndex,'name'=>'player_document[]','index'=>(int)$failedIndex,'message'=>documentQualityMessage($issue)];
