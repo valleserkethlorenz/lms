@@ -24,22 +24,22 @@ $lmsBase = substr($lmsBase, 0, strrpos($lmsBase, '/')); // app -> lms
   <link rel="stylesheet" href="<?= htmlspecialchars($lmsBase) ?>/assets/css/lms-modal.css">
 
   <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
   <!-- DataTables CSS -->
-  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.8/css/dataTables.bootstrap4.min.css">
-  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.bootstrap4.min.css">
-  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/select/1.7.0/css/select.bootstrap4.min.css">
-  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/fixedheader/3.4.1/css/fixedHeader.bootstrap4.min.css">
+  <link rel="stylesheet" type="text/css" href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables/1.13.8/dataTables.bootstrap4.min.css">
+  <link rel="stylesheet" type="text/css" href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-buttons/2.4.2/buttons.bootstrap4.min.css">
+  <link rel="stylesheet" type="text/css" href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-select/1.7.0/select.bootstrap4.min.css">
+  <link rel="stylesheet" type="text/css" href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-fixedheader/3.4.0/fixedHeader.bootstrap4.min.css">
   <!-- Alertify CSS -->
-  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/css/alertify.min.css">
-  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/alertifyjs@1.13.1/build/css/themes/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/alertifyjs/1.13.1/alertify.min.css">
+  <link rel="stylesheet" type="text/css" href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/alertifyjs/1.13.1/themes/bootstrap.min.css">
   <!-- Bootstrap Icons -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/bootstrap-icons/1.11.3/bootstrap-icons.min.css">
   <!-- SB Admin 2 CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/startbootstrap-sb-admin-2@4.1.4/css/sb-admin-2.min.css" rel="stylesheet">
+  <link href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/sb-admin-2/4.1.4/sb-admin-2.min.css" rel="stylesheet">
   <!-- Select2 CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/@ttskch/select2-bootstrap4-theme@1.5.2/dist/select2-bootstrap4.min.css" rel="stylesheet">
+  <link href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/select2/4.1.0-rc.0/select2.min.css" rel="stylesheet">
+  <link href="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/select2-bootstrap4-theme/1.5.2/select2-bootstrap4.min.css" rel="stylesheet">
   <!-- Poppins Font -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>

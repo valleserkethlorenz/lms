@@ -32,7 +32,9 @@ uploads/gallery/*
 !uploads/gallery/.gitkeep
 
 # Composer
-vendor/
+# Root-only on purpose: assets/vendor/ holds the self-hosted front-end
+# libraries and MUST be committed so deployments receive them.
+/vendor/
 # composer.lock IS committed on purpose - deployments need it for reproducible installs
 
 # Temporary files

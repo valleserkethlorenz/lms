@@ -260,7 +260,7 @@ include 'includes/header.php';
 <?php include 'includes/footer.php'; ?>
 
 
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/fullcalendar/6.1.10/index.global.min.js"></script>
 <script>
 var cmtMatches = <?php echo json_encode(array_map(function ($m) {
     return [

@@ -1,31 +1,43 @@
+<?php
+// $lmsBase is normally defined by includes/header.php. Compute the same
+// project-relative base path as a fallback so this footer also works when it
+// is included on its own (and so static analysis sees the variable defined).
+if (!isset($lmsBase)) {
+    $lmsFooterDocumentRoot = rtrim(str_replace('\\', '/', (string) ($_SERVER['DOCUMENT_ROOT'] ?? '')), '/');
+    $lmsFooterProjectRoot = rtrim(str_replace('\\', '/', dirname(__DIR__)), '/');
+    $lmsBase = ($lmsFooterDocumentRoot !== '' && strpos($lmsFooterProjectRoot, $lmsFooterDocumentRoot) === 0)
+        ? rtrim(substr($lmsFooterProjectRoot, strlen($lmsFooterDocumentRoot)), '/')
+        : '';
+}
+?>
 <!-- jQuery -->
-<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/jquery/3.7.1/jquery.min.js"></script>
 <!-- Bootstrap Bundle JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
 <!-- jQuery Easing -->
-<script src="https://cdn.jsdelivr.net/npm/jquery-easing@0.0.1/jquery.easing.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/jquery-easing/1.4.1/jquery.easing.min.js"></script>
 <!-- SB Admin 2 JS -->
-<script src="https://cdn.jsdelivr.net/npm/startbootstrap-sb-admin-2@4.1.4/js/sb-admin-2.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/sb-admin-2/4.1.4/sb-admin-2.min.js"></script>
 <!-- Select2 JS -->
-<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/select2/4.1.0-rc.0/select2.min.js"></script>
 <!-- DataTables JS -->
-<script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.8/js/dataTables.bootstrap4.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.bootstrap4.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.colVis.min.js"></script>
-<script src="https://cdn.datatables.net/select/1.7.0/js/dataTables.select.min.js"></script>
-<script src="https://cdn.datatables.net/fixedheader/3.4.1/js/dataTables.fixedHeader.min.js"></script>
-<script src="https://cdn.datatables.net/rowgroup/1.4.1/js/dataTables.rowGroup.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables/1.13.8/jquery.dataTables.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables/1.13.8/dataTables.bootstrap4.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-buttons/2.4.2/dataTables.buttons.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-buttons/2.4.2/buttons.bootstrap4.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-buttons/2.4.2/buttons.html5.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-buttons/2.4.2/buttons.print.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-buttons/2.4.2/buttons.colVis.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-select/1.7.0/dataTables.select.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-fixedheader/3.4.0/dataTables.fixedHeader.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/datatables-rowgroup/1.4.1/dataTables.rowGroup.min.js"></script>
 <!-- JSZip for DataTables export -->
-<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/jszip/3.10.1/jszip.min.js"></script>
 <!-- pdfmake for DataTables export -->
-<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.7/build/pdfmake.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdfmake@0.2.7/build/vfs_fonts.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/pdfmake/0.2.7/pdfmake.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/pdfmake/0.2.7/vfs_fonts.js"></script>
 <!-- SweetAlert2 -->
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/sweetalert2/11.26.25/sweetalert2.all.min.js"></script>
 <!-- LMS floating toast notifications (shared component) -->
 <script src="<?= htmlspecialchars($lmsBase) ?>/assets/js/lms-toast.js"></script>
 <!-- LMS modal dialogs (shared component) -->

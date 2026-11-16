@@ -760,7 +760,7 @@ $hasStages = !empty($leagueStages);
     <?php include 'includes/footer.php'; ?>
     <!-- FullCalendar (v6 global bundle) powers the Calendar view below.
          It must load after jQuery, which includes/footer.php pulls in. -->
-    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+    <script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/fullcalendar/6.1.10/index.global.min.js"></script>
 
     <script>
         const leagueId = <?php echo htmlspecialchars(json_encode($leagueId), ENT_QUOTES, 'UTF-8'); ?>;
@@ -868,12 +868,12 @@ $hasStages = !empty($leagueStages);
         });
 
         function initScheduleCalendar() {
-            // FullCalendar is loaded from a CDN at the end of this page. If it is
-            // unavailable (offline, blocked CDN), explain it instead of leaving
+            // FullCalendar is loaded from assets/vendor at the end of this page. If it is
+            // unavailable (missing file, deploy problem), explain it instead of leaving
             // the panel blank — `new FullCalendar.Calendar` would throw otherwise.
             if (typeof FullCalendar === 'undefined') {
                 document.getElementById('scheduleCalendar').innerHTML =
-                    '<div class="lp-empty"><i class="bi bi-calendar-x"></i><p>The calendar library could not be loaded. Check your connection and reload the page — the Table view still works.</p></div>';
+                    '<div class="lp-empty"><i class="bi bi-calendar-x"></i><p>The calendar library could not be loaded. Reload the page — the Table view still works.</p></div>';
                 return;
             }
 

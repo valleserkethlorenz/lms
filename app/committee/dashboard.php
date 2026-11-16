@@ -494,7 +494,7 @@ include 'includes/header.php';
     }
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/fullcalendar/6.1.10/index.global.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     // ── Live clock ──────────────────────────────────────────────────────

@@ -63,8 +63,8 @@ if (!empty($_SESSION['lms_id'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= htmlspecialchars($pageTitle) ?> | Live Stream</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link href="assets/vendor/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="assets/vendor/bootstrap-icons/1.11.3/bootstrap-icons.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{font-family:'Poppins',sans-serif;}
@@ -160,7 +160,7 @@ Player not loading? <a href="<?= htmlspecialchars($parsed['original_url']) ?>" t
 <p class="mb-1"><i class="bi bi-<?= livestreamPlatformIcon($parsed['platform']) ?> me-1"></i>Stream powered by <?= livestreamPlatformLabel($parsed['platform']) ?></p>
 <p class="mb-0 small">&copy; <?= date('Y') ?> League Management System</p>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
 

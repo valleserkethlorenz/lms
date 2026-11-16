@@ -41,7 +41,7 @@ if(!$grouping){
 }
 $sections=[]; foreach($rows as $row){$key=$grouping?($row['group_name']?:'Ungrouped'):'League Rankings';$sections[$key][]=$row;}
 ?>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="assets/vendor/font-awesome/6.4.0/css/all.min.css">
 <style>
     /* ==========================================================
        Standings — page-specific additions only. Shared panels and

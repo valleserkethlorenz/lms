@@ -22,7 +22,7 @@ if($filters['sport']!==''){$where[]='l.sport=?';$params[]=$filters['sport'];$typ
 $leagueSql="SELECT l.*,(SELECT COUNT(*) FROM tbl_team t WHERE t.league_id=l.id AND LOWER(t.status)='approved') current_teams FROM tbl_league l WHERE ".implode(' AND ',$where).' ORDER BY l.start_date DESC';
 $leagueStmt=$conn->prepare($leagueSql);if($params)$leagueStmt->bind_param($types,...$params);$leagueStmt->execute();$leagueResult=$leagueStmt->get_result();$filteredLeagues=[];while($league=$leagueResult->fetch_assoc()){$league['live_status']=getLeagueStatus($league);if($filters['status']===''||$filters['status']===$league['live_status'])$filteredLeagues[]=$league;}$leagueStmt->close();
 include 'includes/header.php'; ?>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link rel="stylesheet" href="assets/vendor/font-awesome/6.4.0/css/all.min.css" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style rel="stylesheet">
     .cols {
