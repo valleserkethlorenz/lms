@@ -75,11 +75,13 @@ already been applied, compare your schema against the dates below.
 | 038 | `038_tournament_completion_and_series.sql` | 2026-10-20 | yes | tournament completion columns, stage `final_best_of`, `result_unit = 'games'` |
 | 039 | `039_notification_indexes.sql` | 2026-11-05 | yes | `tbl_notification` composite indexes (unread badge, bell list, daily de-dupe) |
 | 040 | `040_schedule_draft_nulls.sql` | 2026-11-06 | yes | nullable `tbl_schedule.date` / `time` for unscheduled drafts |
+| 041 | `041_tournament_structures.sql` | 2026-11-16 | yes | tournament stage/group structures |
+| 042 | `042_email_verification.sql` | 2026-11-16 | yes | `tbl_email_verification` (registration OTP) |
 
 ## Baseline note
 
 Every migration above is already folded into `install/01_schema.sql`
-(2026-11-05). A database built from `install/` is at migration **039** — do not
+(2026-11-16). A database built from `install/` is at migration **042** — do not
 run this folder against it.
 
 ## Related documents

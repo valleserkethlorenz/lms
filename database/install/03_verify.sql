@@ -10,8 +10,8 @@
 USE `lms`;
 
 -- 1. Table count -------------------------------------------------------------
---    expected: 31
-SELECT COUNT(*) AS table_count_expected_31
+--    expected: 32
+SELECT COUNT(*) AS table_count_expected_32
 FROM information_schema.tables
 WHERE table_schema = 'lms';
 
@@ -22,6 +22,7 @@ FROM (
             SELECT 'tbl_announcement' AS name
   UNION ALL SELECT 'tbl_attempts'
   UNION ALL SELECT 'tbl_audit_log'
+  UNION ALL SELECT 'tbl_email_verification'
   UNION ALL SELECT 'tbl_gallery'
   UNION ALL SELECT 'tbl_gallery_images'
   UNION ALL SELECT 'tbl_gallery_posts'

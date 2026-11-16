@@ -49,6 +49,16 @@ if (!isset($lmsBase)) {
     $(document).on('submit', '#signUpForm', function(e) {
         e.preventDefault();
 
+        // Registration is a two-step flow: the email must be verified before
+        // the application can be submitted. The server re-checks this too.
+        if (document.getElementById('signupStepApplication') && !window.signupEmailVerified) {
+            Toast.fire({
+                icon: 'warning',
+                title: 'Please verify your email address first'
+            });
+            return;
+        }
+
         // Validate reCAPTCHA for signup
         if (typeof recaptchaIds.signup !== 'undefined') {
             var captchaResponse = grecaptcha.getResponse(recaptchaIds.signup);
@@ -101,6 +111,17 @@ if (!isset($lmsBase)) {
                         window.location.href = target;
                     });
                 }
+            },
+            error: function(xhr) {
+                var res = {};
+                try { res = JSON.parse(xhr.responseText || '{}'); } catch (e) { res = {}; }
+                Toast.fire({
+                    icon: 'warning',
+                    title: res.msg || 'Something went wrong. Please try again.'
+                });
+                if (typeof recaptchaIds.signup !== 'undefined') {
+                    grecaptcha.reset(recaptchaIds.signup);
+                }
             }
 
         });
@@ -108,6 +129,9 @@ if (!isset($lmsBase)) {
     });
     document.addEventListener("DOMContentLoaded", function() {
         document.querySelectorAll("input").forEach(function(input) {
+            // Preserve browser autofill for the registration email and the
+            // one-time-code field.
+            if (input.id === 'signupEmail' || input.id === 'signupCode') return;
             input.setAttribute("autocomplete", "off");
         });
     });
@@ -236,11 +260,6 @@ if (!isset($lmsBase)) {
     });
     // The standalone Team Representative login modal was retired in favour of
     // login.php, so its submit handler is no longer needed.
-    document.addEventListener("DOMContentLoaded", function() {
-        document.querySelectorAll("input").forEach(function(input) {
-            input.setAttribute("autocomplete", "off");
-        });
-    });
 
     // Get today's date
     const today = new Date();

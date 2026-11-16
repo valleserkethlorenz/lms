@@ -24,6 +24,7 @@ require_once __DIR__ . '/../includes/registrationGate.php';
 require_once __DIR__ . '/../config/teamRegistrationStatus.php';
 require_once __DIR__ . '/../config/passwordReset.php';
 require_once __DIR__ . '/../config/emailService.php';
+require_once __DIR__ . '/../config/emailVerification.php';
 
 // Initialize error handler for tests
 if (function_exists('initializeErrorHandler')) {

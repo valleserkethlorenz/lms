@@ -94,6 +94,44 @@ include __DIR__ . '/includes/header.php';
         .signup-card .signup-form-actions{flex-direction:column-reverse;align-items:stretch}
         .signup-card .signup-form-actions .btn{width:100%}
     }
+
+    /* ── Two-step registration wizard ───────────────────────────── */
+    .signup-card .signup-stepper{display:flex;align-items:center;gap:10px;list-style:none;margin:0 0 16px;padding:0}
+    .signup-card .signup-stepper-item{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#94a3b8;white-space:nowrap}
+    .signup-card .signup-stepper-dot{width:26px;height:26px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:12px;font-weight:700;flex:0 0 auto}
+    .signup-card .signup-stepper-item.is-active{color:#09173c}
+    .signup-card .signup-stepper-item.is-active .signup-stepper-dot{background:#f59e0b;color:#fff;box-shadow:0 0 0 4px rgba(245,158,11,.16)}
+    .signup-card .signup-stepper-item.is-complete{color:#09173c}
+    .signup-card .signup-stepper-item.is-complete .signup-stepper-dot{background:#16a34a;color:#fff}
+    .signup-card .signup-stepper-line{flex:1;height:2px;background:#e2e8f0;border-radius:2px}
+    .signup-card .signup-step-pane{width:100%}
+    .signup-card .signup-verify-wrap{max-width:560px;margin:0 auto;padding:2px 0 4px}
+    .signup-card .signup-verify-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}
+    .signup-card .signup-verify-icon{width:54px;height:54px;border-radius:14px;background:#eef2f7;color:#09173c;display:flex;align-items:center;justify-content:center;font-size:23px;flex:0 0 auto}
+    .signup-card .signup-verify-title{margin:0 0 6px;font-size:22px;line-height:1.2;font-weight:700;color:#09173c;letter-spacing:-.2px}
+    .signup-card .signup-verify-copy{margin:0;font-size:13.5px;line-height:1.6;color:#475569}
+    .signup-card .signup-verify-field{margin-bottom:14px}
+    .signup-card .signup-email-row{display:flex;gap:8px;align-items:stretch}
+    .signup-card .signup-email-row .form-control{flex:1 1 auto;min-width:0}
+    .signup-card .btn-signup-code{border-radius:10px;font-weight:600;font-size:13px;padding:0 18px;border:1.5px solid #cbd5e1;background:#f8fafc;color:#09173c;white-space:nowrap;transition:all .2s;min-height:42px}
+    .signup-card .btn-signup-code:hover:not(:disabled){background:#eef2f7;border-color:#94a3b8}
+    .signup-card .btn-signup-code:disabled{opacity:.65;cursor:not-allowed}
+    .signup-card .signup-code-hint{margin:7px 0 0;font-size:11.5px;color:#64748b}
+    .signup-card .btn-signup-verify{width:100%;margin-top:4px;border:none;border-radius:10px;padding:12px 20px;font-weight:600;font-size:14px;color:#fff;background:linear-gradient(135deg,#09173c 0%,#1a3a6b 100%);box-shadow:0 4px 14px rgba(9,23,60,.18);transition:all .2s}
+    .signup-card .btn-signup-verify:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 20px rgba(9,23,60,.26)}
+    .signup-card .btn-signup-verify:disabled{background:#cbd5e1;color:#64748b;box-shadow:none;cursor:not-allowed;transform:none}
+    .signup-card .signup-alt-link{margin-top:14px;text-align:center;font-size:12.5px;color:#64748b}
+    .signup-card .signup-alt-link a{color:#09173c;font-weight:600;text-decoration:none}
+    .signup-card .signup-alt-link a:hover{text-decoration:underline}
+    .signup-card .signup-verified-chip{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 4px;padding:10px 14px;border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4;color:#166534;font-size:12.5px;font-weight:600}
+    .signup-card .signup-verified-chip .btn-link{padding:0;font-size:12px;font-weight:600;color:#09173c;text-decoration:none}
+    .signup-card .signup-verified-chip .btn-link:hover{text-decoration:underline}
+    @media(max-width:575.98px){
+        .signup-card .signup-verify-title{font-size:19px}
+        .signup-card .signup-verify-icon{width:46px;height:46px;font-size:20px}
+        .signup-card .signup-email-row{flex-direction:column}
+        .signup-card .btn-signup-code{min-height:42px;padding:10px 16px}
+    }
 </style>
 
 <body class="auth-page">
@@ -116,6 +154,68 @@ include __DIR__ . '/includes/header.php';
                     </div>
                     <div class="modal-body">
                         <form class="row g-3 needs-validation" id="signUpForm" novalidate>
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect, ENT_QUOTES, 'UTF-8') ?>">
+
+                            <!-- Step indicator -->
+                            <div class="col-12">
+                                <ol class="signup-stepper" id="signupStepper" aria-label="Registration progress">
+                                    <li class="signup-stepper-item is-active" data-step="1" aria-current="step">
+                                        <span class="signup-stepper-dot">1</span>
+                                        <span class="signup-stepper-label">Verify email</span>
+                                    </li>
+                                    <li class="signup-stepper-line" aria-hidden="true"></li>
+                                    <li class="signup-stepper-item" data-step="2">
+                                        <span class="signup-stepper-dot">2</span>
+                                        <span class="signup-stepper-label">Application</span>
+                                    </li>
+                                </ol>
+                            </div>
+
+                            <!-- Step 1: verify the email address -->
+                            <div class="col-12 signup-step-pane" id="signupStepVerify">
+                                <div class="signup-verify-wrap">
+                                    <div class="signup-verify-head">
+                                        <div class="signup-verify-icon"><i class="bi bi-envelope" aria-hidden="true"></i></div>
+                                        <div>
+                                            <h2 class="signup-verify-title">Verify your email</h2>
+                                            <p class="signup-verify-copy">We'll send a 6-digit code to confirm your email before you set up your Team Representative account.</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="signup-verify-field">
+                                        <label for="signupEmail" class="form-label">Email address<sup class="text-danger">*</sup></label>
+                                        <div class="signup-email-row">
+                                            <input type="text" class="form-control" id="signupEmail" name="email" required placeholder="you@example.com" pattern="^[a-zA-Z0-9]+@gmail\.com$" title="Please enter a valid email address ending with @gmail.com" autocomplete="email">
+                                            <button type="button" class="btn btn-signup-code" id="signupSendCode">Send code</button>
+                                        </div>
+                                        <div class="invalid-feedback">Please enter a valid @gmail.com email address!</div>
+                                    </div>
+
+                                    <div class="signup-verify-field">
+                                        <label for="signupCode" class="form-label">Verification code</label>
+                                        <input type="text" class="form-control" id="signupCode" name="verification_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="\d{6}" placeholder="Send a code first" disabled>
+                                        <p class="signup-code-hint" id="signupCodeHint" aria-live="polite">The code expires shortly after it is sent.</p>
+                                    </div>
+
+                                    <button type="button" class="btn btn-signup-verify" id="signupVerifyCode" disabled>Verify &amp; continue</button>
+
+                                    <div class="signup-alt-link">
+                                        Already have an account?
+                                        <a href="<?= htmlspecialchars($loginHref, ENT_QUOTES, 'UTF-8') ?>">Sign in</a>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Step 2: the application / account details -->
+                            <div class="col-12 signup-step-pane d-none" id="signupStepApplication">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <div class="signup-verified-chip">
+                                            <span><i class="bi bi-patch-check-fill" aria-hidden="true"></i> Verified: <span id="signupVerifiedEmail"></span></span>
+                                            <button type="button" class="btn btn-link" id="signupChangeEmail">Change</button>
+                                        </div>
+                                    </div>
 
                             <!-- Personal Information Section -->
                             <div class="col-12">
@@ -174,15 +274,6 @@ include __DIR__ . '/includes/header.php';
                                     <input type="text" class="form-control" id="testingss" name="phone" required placeholder="09XXXXXXXXX" maxlength="11" pattern="\d{11}" oninput="validateInput11()">
                                 </div>
                                 <div class="invalid-feedback">Please enter a valid 11-digit phone number!</div>
-                            </div>
-
-                            <div class="col-md-6">
-                                <label for="validationServer04" class="form-label">Email<sup class="text-danger">*</sup></label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-                                    <input type="text" class="form-control" id="validationServer04" name="email" required placeholder="example@gmail.com" pattern="^[a-zA-Z0-9]+@gmail\.com$" title="Please enter a valid email address ending with @gmail.com">
-                                </div>
-                                <div class="invalid-feedback">Please enter a valid @gmail.com email address!</div>
                             </div>
 
                             <!-- Security Information Section -->
@@ -246,14 +337,14 @@ include __DIR__ . '/includes/header.php';
                                 </div>
                             </div>
 
-                            <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect, ENT_QUOTES, 'UTF-8') ?>">
-
                             <div class="col-12" style="margin-top:20px;">
                                 <div class="d-flex justify-content-end gap-2 signup-form-actions">
                                     <a href="<?= htmlspecialchars($loginHref, ENT_QUOTES, 'UTF-8') ?>" class="btn btn-signup-close">Cancel</a>
                                     <button type="submit" class="btn btn-signup-submit" name="createUser"><i class="bi bi-person-plus-fill me-1"></i>Create Account</button>
                                 </div>
                             </div>
+                                </div><!-- /step 2 row -->
+                            </div><!-- /signupStepApplication -->
                         </form>
                     </div>
                 </div>
@@ -268,6 +359,7 @@ include __DIR__ . '/includes/header.php';
     </div>
 
     <?php include __DIR__ . '/includes/footer.php'; ?>
+    <script src="<?= htmlspecialchars(($lmsBase ?? '') . '/assets/js/register-wizard.js', ENT_QUOTES, 'UTF-8') ?>"></script>
 
     <script>
     (function () {
@@ -292,11 +384,13 @@ include __DIR__ . '/includes/header.php';
             }
         }
 
-        if (typeof grecaptcha !== 'undefined' && typeof grecaptcha.render === 'function') {
-            renderRecaptchaSignup();
-        } else {
-            window.addEventListener('recaptcha-ready', renderRecaptchaSignup);
-        }
+        // The widget is rendered when Step 2 (the application) is shown, so it
+        // is laid out inside a visible container. Expose the renderer to the
+        // wizard script (assets/js/register-wizard.js).
+        window.renderSignupRecaptcha = renderRecaptchaSignup;
+        window.addEventListener('recaptcha-ready', function () {
+            if (window.signupEmailVerified) renderRecaptchaSignup();
+        });
 
         /* Password eye-toggle for the registration form */
         function setupPwToggle(btnId, inputId) {

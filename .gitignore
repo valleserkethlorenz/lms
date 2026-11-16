@@ -4,6 +4,7 @@ credentials.txt
 .env
 .env.local
 .env.production
+config/resend.local.php
 
 # IDE files
 .vscode/

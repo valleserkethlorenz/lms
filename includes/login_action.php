@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/rateLimiter.php';
 require_once __DIR__ . '/../config/securityLogger.php';
 require_once __DIR__ . '/../config/auth_guard.php';
 require_once __DIR__ . '/../config/captcha.php';
+require_once __DIR__ . '/../config/emailVerification.php';
 
 function isMobileDevice()
 {
@@ -11,7 +12,137 @@ function isMobileDevice()
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    /* ---------------------------------------------------------------------
+       Registration step 1 — send a 6-digit verification code.
+       --------------------------------------------------------------------- */
+    if (isset($_POST['sendEmailCode'])) {
+        requireJsonCsrf();
+
+        $email = normalizeVerificationEmail($_POST['email'] ?? '');
+        if (!isValidVerificationEmail($email)) {
+            echo json_encode(['status' => 401, 'msg' => 'Enter a valid email address.']);
+            exit;
+        }
+
+        $stmt = $conn->prepare("SELECT id FROM tbl_user WHERE email = ? LIMIT 1");
+        $stmt->bind_param('s', $email);
+        $stmt->execute();
+        $alreadyRegistered = $stmt->get_result()->num_rows > 0;
+        $stmt->close();
+        if ($alreadyRegistered) {
+            echo json_encode(['status' => 401, 'msg' => 'This email is already registered. Please sign in instead.']);
+            exit;
+        }
+
+        $clientIp = getClientIp();
+        $limiterKey = $email . '|' . $clientIp;
+        $sendLimiter = new RateLimiter('email_verify_send', 5, 3600);
+        if (!$sendLimiter->check($limiterKey)) {
+            SecurityLogger::rateLimitExceeded('email_verify_send', maskVerificationEmail($email));
+            echo json_encode(['status' => 429, 'msg' => 'Too many verification code requests. Please try again later.']);
+            exit;
+        }
+
+        $ipLimiter = new RateLimiter('email_verify_ip', 10, 3600);
+        if (!$ipLimiter->check($clientIp)) {
+            SecurityLogger::rateLimitExceeded('email_verify_ip', $clientIp);
+            echo json_encode(['status' => 429, 'msg' => 'Too many verification code requests from this network. Please try again later.']);
+            exit;
+        }
+
+        $window = canSendVerificationCode($conn, $email);
+        if (!$window['allowed']) {
+            echo json_encode([
+                'status'      => 429,
+                'msg'         => 'Please wait before requesting another code.',
+                'retry_after' => (int) $window['retry_after'],
+            ]);
+            exit;
+        }
+
+        // Opportunistic housekeeping: remove verification rows older than a day.
+        cleanupExpiredEmailVerifications($conn, 1);
+
+        $created = createEmailVerification($conn, $email, $clientIp, $_SERVER['HTTP_USER_AGENT'] ?? '');
+        if (empty($created['ok'])) {
+            echo json_encode(['status' => 401, 'msg' => 'We could not create a verification code. Please try again.']);
+            exit;
+        }
+
+        $sent = sendVerificationCodeEmail($email, (string) $created['code']);
+        if (empty($sent['success'])) {
+            invalidateEmailVerifications($conn, $email);
+            SecurityLogger::log('SYSTEM', 'Verification code email failed for ' . maskVerificationEmail($email), [
+                'error' => $sent['error'] ?? '',
+            ], 'WARNING');
+            echo json_encode(['status' => 502, 'msg' => 'We could not send the verification code. Please try again shortly.']);
+            exit;
+        }
+
+        $sendLimiter->record($limiterKey);
+        $ipLimiter->record($clientIp);
+        SecurityLogger::auth('Email Verification Code Sent', 'Code sent to ' . maskVerificationEmail($email));
+        echo json_encode([
+            'status'     => 201,
+            'msg'        => 'Verification code sent. Check your inbox and spam folder.',
+            'cooldown'   => EMAIL_VERIFICATION_RESEND_COOLDOWN,
+            'expires_in' => (int) $created['expires_in'],
+        ]);
+        exit;
+    }
+
+    /* ---------------------------------------------------------------------
+       Registration step 2 — confirm the code and mark the email verified.
+       --------------------------------------------------------------------- */
+    if (isset($_POST['verifyEmailCode'])) {
+        requireJsonCsrf();
+
+        $email = normalizeVerificationEmail($_POST['email'] ?? '');
+        $code = preg_replace('/\D/', '', (string) ($_POST['code'] ?? ''));
+        if (!isValidVerificationEmail($email) || !isValidVerificationCode($code)) {
+            echo json_encode(['status' => 401, 'msg' => 'Enter the 6-digit code from your email.']);
+            exit;
+        }
+
+        $clientIp = getClientIp();
+        $limiterKey = $email . '|' . $clientIp;
+        $verifyLimiter = new RateLimiter('email_verify_check', 10, 900);
+        if (!$verifyLimiter->check($limiterKey)) {
+            SecurityLogger::rateLimitExceeded('email_verify_check', maskVerificationEmail($email));
+            echo json_encode(['status' => 429, 'msg' => 'Too many verification attempts. Please wait and try again.']);
+            exit;
+        }
+
+        $result = verifyEmailVerificationCode($conn, $email, $code);
+        $verifyLimiter->record($limiterKey);
+
+        if (empty($result['ok'])) {
+            SecurityLogger::auth('Email Verification Failed', maskVerificationEmail($email) . ' — ' . ($result['reason'] ?? 'unknown'));
+            echo json_encode([
+                'status'             => 401,
+                'msg'                => $result['msg'],
+                'reason'             => $result['reason'] ?? 'invalid',
+                'remaining_attempts' => $result['remaining_attempts'] ?? null,
+            ]);
+            exit;
+        }
+
+        $verifyLimiter->clear($limiterKey);
+        markEmailVerifiedInSession($email);
+        SecurityLogger::auth('Email Verified', maskVerificationEmail($email));
+        echo json_encode(['status' => 201, 'msg' => 'Email verified. Continue with your application.']);
+        exit;
+    }
+
     if (isset($_POST['signUp'])) {
+        requireJsonCsrf();
+
+        $email = normalizeVerificationEmail($_POST["email"] ?? '');
+        if (!isEmailVerifiedInSession($email)) {
+            echo json_encode(['status' => 401, 'msg' => 'Please verify your email address before creating your account.']);
+            exit;
+        }
+
         // CAPTCHA verification
         $recaptchaToken = $_POST['g-recaptcha-response'] ?? '';
         if (!verifyRecaptcha($recaptchaToken)) {
@@ -21,7 +152,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         $fname = trim($_POST["fname"] ?? '');
         $lname = trim($_POST["lname"] ?? '');
-        $email = trim($_POST["email"] ?? '');
         $phone = trim($_POST["phone"] ?? '');
         $pass = $_POST["pass1"] ?? '';
         $pass2 = $_POST["pass2"] ?? '';
@@ -46,8 +176,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $resId = ''; $role = '2'; $stat = '1';
             $stmt = $conn->prepare("INSERT INTO tbl_user (res_id,fname,lname,mname,suffix,phone,email,pass,role,stat,pass_stat) VALUES (?,?,?,?,?,?,?,?,?,?,0)");
             $stmt->bind_param('ssssssssss', $resId, $fname, $lname, $mname, $suffix, $phone, $email, $hash, $role, $stat);
-            if ($stmt->execute()) { $stmt->close(); echo json_encode(['status'=>201,'msg'=>'Account created successfully']); exit; }
-            else { $stmt->close(); echo json_encode(['status'=>401,'msg'=>'Something went wrong']); exit; }
+            if ($stmt->execute()) {
+                $stmt->close();
+                if (!consumeVerifiedEmail($conn, $email)) {
+                    SecurityLogger::log('SYSTEM', 'Verified email row was already consumed for ' . maskVerificationEmail($email), [], 'WARNING');
+                }
+                clearEmailVerificationSession();
+                SecurityLogger::auth('Account Created', 'New team representative account for ' . maskVerificationEmail($email));
+                echo json_encode(['status'=>201,'msg'=>'Account created successfully']);
+                exit;
+            } else {
+                $stmt->close();
+                echo json_encode(['status'=>401,'msg'=>'Something went wrong']);
+                exit;
+            }
         } else { echo json_encode(['status'=>401,'msg'=>"Password doesn't match"]); exit; }
     }
     if (isset($_POST['loginBtn'])) {

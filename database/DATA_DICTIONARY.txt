@@ -159,6 +159,25 @@ id                 int(11)           No    PK, AI  Attempt record identifier.
 ip_address         varchar(255)      No            IP address that made the attempt.
 try_time           bigint(11)        No            Attempt timestamp or time value.
 
+TABLE: tbl_email_verification
+Purpose: Stores one-time 6-digit email verification codes for the two-step
+         registration flow (verify email -> application). Rows are created
+         before the account exists, so there is no user_id foreign key.
+
+Column             Type              Null  Key     Description
+-----------------  ----------------  ----  ------  --------------------------------
+id                 int(11)           No    PK, AI  Verification record identifier.
+email              varchar(255)      No            Normalized email being verified.
+code_hash          varchar(255)      No            password_hash() of the 6-digit code.
+expires_at         datetime          No            Code expiry (10 minutes by default).
+attempts           tinyint unsigned  No            Wrong-code attempts; code is burned at 5.
+verified           tinyint(1)        No            Whether the code was accepted.
+verified_at        datetime          Yes           When the code was accepted.
+consumed           tinyint(1)        No            Single-use flag; set after account creation.
+ip_address         varchar(45)       Yes           Requester IP address.
+user_agent         varchar(500)      Yes           Requester user agent.
+created_at         datetime          No            Record creation timestamp.
+
 TABLE: tbl_user
 Purpose: Stores organizer and team representative accounts.
 
