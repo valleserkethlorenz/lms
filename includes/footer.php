@@ -92,7 +92,13 @@ if (!isset($lmsBase)) {
                         title: res.msg || 'Account created successfully.',
                         timer: 2000
                     }).then(function() {
-                        location.reload();
+                        var redirectInput = document.querySelector('#signUpForm input[name="redirect"]');
+                        var requested = redirectInput ? redirectInput.value : '';
+                        var target = 'login.php?registered=1';
+                        if (requested) {
+                            target += '&redirect=' + encodeURIComponent(requested);
+                        }
+                        window.location.href = target;
                     });
                 }
             }
@@ -158,6 +164,15 @@ if (!isset($lmsBase)) {
         const ua = navigator.userAgent;
         return /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
     }
+    /* Only allow same-site, relative redirect targets after login. */
+    function safeAuthRedirect(value) {
+        var target = String(value || '').trim();
+        if (!target) return '';
+        if (/^(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(target)) return '';
+        if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return '';
+        if (/[\r\n\\]/.test(target)) return '';
+        return target;
+    }
     $(document).on('submit', '#loginForm', function(e) {
         e.preventDefault();
 
@@ -195,7 +210,8 @@ if (!isset($lmsBase)) {
                         icon: "success",
                         title: res.msg
                     }).then(() => {
-                        window.location.href = res.redirect;
+                        var requested = $('#loginForm input[name="redirect"]').val();
+                        window.location.href = safeAuthRedirect(requested) || res.redirect;
                     });
                 } else {
                     Toast.fire({
@@ -218,74 +234,8 @@ if (!isset($lmsBase)) {
             }
         });
     });
-    $(document).on('submit', '#loginModalForm', function(e) {
-        e.preventDefault();
-
-        // Validate reCAPTCHA for modal login
-        if (typeof recaptchaIds.loginModal !== 'undefined') {
-            var captchaResponse = grecaptcha.getResponse(recaptchaIds.loginModal);
-            if (!captchaResponse) {
-                Toast.fire({
-                    icon: "warning",
-                    title: "Please complete the CAPTCHA verification"
-                });
-                return;
-            }
-        }
-
-        var formData = new FormData(this);
-        formData.append('loginModal', true);
-
-        // Add reCAPTCHA response token
-        if (typeof recaptchaIds.loginModal !== 'undefined') {
-            formData.append('g-recaptcha-response', grecaptcha.getResponse(recaptchaIds.loginModal));
-        }
-
-        $.ajax({
-            url: 'includes/login_action.php',
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            dataType: 'json',
-
-            success: function(res) {
-                if (res.status === 200 || res.status === 201) {
-                    Toast.fire({
-                        icon: "success",
-                        title: res.msg
-                    }).then(() => {
-                        location.reload();
-
-                    });
-                } else {
-                    Toast.fire({
-                        icon: "error",
-                        title: res.msg
-                    });
-                    // Reset reCAPTCHA on failure
-                    if (typeof recaptchaIds.loginModal !== 'undefined') {
-                        grecaptcha.reset(recaptchaIds.loginModal);
-                    }
-                }
-            },
-
-            error: function(xhr) {
-                if (xhr.responseJSON && xhr.responseJSON.msg) {
-                    Toast.fire({
-                        icon: xhr.status === 403 ? "warning" : "error",
-                        title: xhr.responseJSON.msg
-                    });
-                } else {
-                    Swal.fire({
-                        icon: "error",
-                        title: "Server Error",
-                        text: "Please try again later."
-                    });
-                }
-            }
-        });
-    });
+    // The standalone Team Representative login modal was retired in favour of
+    // login.php, so its submit handler is no longer needed.
     document.addEventListener("DOMContentLoaded", function() {
         document.querySelectorAll("input").forEach(function(input) {
             input.setAttribute("autocomplete", "off");

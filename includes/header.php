@@ -153,4 +153,10 @@ $lmsBase = substr($lmsBase, 0, strrpos($lmsBase, '/')); // go up from /includes 
         }
     </script>
     <script src="https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoad&render=explicit" async defer></script>
+
+    <?php if (!empty($lmsPageCss)): ?>
+        <?php foreach ((array) $lmsPageCss as $lmsCssFile): ?>
+            <link rel="stylesheet" href="<?= htmlspecialchars($lmsBase) ?>/<?= htmlspecialchars(ltrim((string) $lmsCssFile, '/'), ENT_QUOTES, 'UTF-8') ?>">
+        <?php endforeach; ?>
+    <?php endif; ?>
 </head>

@@ -76,8 +76,8 @@ $heroCategory    = trim((string)($league_row['category'] ?? '')) ?: '—';
 $heroVenue       = trim((string)($league_row['venue'] ?? ''));
 
 // Team registration is a dedicated page now (app/tr/register_team.php); the
-// #regisTeam modal was removed in favour of it.
-include __DIR__ . '/../components/modal/loginModal.php';
+// #regisTeam modal was removed in favour of it. Authentication also has
+// dedicated pages now, so the login/sign-up modals are no longer included.
 
 // Shared public league design layer (breadcrumb / hero / pills / tabs / panels)
 require_once __DIR__ . '/league-view-styles.php';
@@ -178,9 +178,9 @@ $leagueCurrentLabel = $leaguePageLabels[$page] ?? '';
                     <?php
                     } elseif ($loggin != true) {
                     ?>
-                        <button class="lp-btn lp-btn-light" data-bs-toggle="modal" data-bs-target="#loginModal" type="button">
+                        <a class="lp-btn lp-btn-light" href="login.php?redirect=<?= urlencode($page . '?id=' . $id) ?>">
                             <i class="bi bi-box-arrow-in-right"></i>Sign in to register
-                        </button>
+                        </a>
                     <?php
                     } elseif ($currentRole !== 2) {
                     ?>
