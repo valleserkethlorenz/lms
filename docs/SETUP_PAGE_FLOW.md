@@ -105,10 +105,10 @@ The page shows one step at a time. The open step is stored in the URL (`?step=fo
 | **3. Matches** | The current stage, its progress and one main action | Generate the matches. When a stage finishes, the configured qualifiers advance automatically; the same step then shows the next stage's generation form. Results are entered on Schedule. |
 
 **Setup builds the tournament; Schedule runs it.** Fixture creation (round robins, brackets,
-playoffs and qualifier advancement) lives **only** on Setup, with the pattern picker and the
-preview modal for every draw. The Schedule page owns dates, times, venues, Committee
-assignment, publishing and results, plus the manual match / auto-pairing tools for leagues
-without a structure. There is no second generator on Schedule.
+playoffs and qualifier advancement) lives **only** on Setup, with the stage's automatic
+default draw and a preview modal where the format supports it. The Schedule page owns dates,
+times, venues, Committee assignment, publishing and results, plus the manual match /
+auto-pairing tools for leagues without a structure. There is no second generator on Schedule.
 
 **The normal round-robin → playoffs progression**
 

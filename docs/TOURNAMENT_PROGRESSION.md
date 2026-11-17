@@ -77,7 +77,7 @@ stage or match exists. There is no league "format" column or Admin format list a
 
 | Structure | Stages created | Generation | Progression |
 |---|---|---|---|
-| **Round robin** | `League Stage` (group) + `Group A` | `round_robin_groups` from Setup step 3 (pattern + preview) | standings; optional seeded playoffs from Setup step 3 |
+| **Round robin** | `League Stage` (group) + `Group A` | `round_robin_groups` from Setup step 3 (default draw + preview) | standings; optional seeded playoffs from Setup step 3 |
 | **Round robin + playoffs** | `League Stage` (group) + `Group A`, then `Playoffs` (knockout, empty) | `round_robin_groups`, then `Create playoffs` → `seeded_bracket` | standings; top N promoted; QF/SF/Final advance automatically |
 | **Single elimination** | `Bracket` (knockout) | `seeded_bracket` (seeds 1…N, byes) | winners advance; final → champion |
 | **Groups → knockout** | `Group Stage` (2–8 groups) + `Knockout` | RR in each group, then promote top N and generate a knockout pattern | group tables; promotion; knockout advances |
@@ -216,7 +216,7 @@ after it is completed.
 
 A league is driven by **stages**. Stages are created on the Setup page
 (*Stages* card, after picking the *Multi-stage tournament* format) and generated
-on the Setup page (*Matches* step, with the pattern picker and preview).
+on the Setup page (*Matches* step, with the automatic default draw and preview).
 
 | Stage type | Purpose | Auto-advance |
 |---|---|---|
@@ -229,16 +229,22 @@ on the Setup page (*Matches* step, with the pattern picker and preview).
   *Pool 1* in stage 2.
 * **Promote qualifiers** carries the top N of **each** source group into the target stage
   (optionally mapping several brackets into one pool, e.g. `0,3|1,2`).
-* **Match generation** offers three seeded patterns: `Crossover — A1vD2, A2vD1, B1vC2, B2vC1`,
-  `Quarterfinals — 1st v 4th, 2nd v 3rd per pool`, and `Full playoffs — QF, semifinals, final
-  and Battle for Third`. Nothing is written until the preview is confirmed; seeds
+* **Match generation applies the stage's default draw** — the first pattern in the engine's
+  preference list — so the organizer is never asked to choose one. A *group* stage draws
+  **`round_robin_groups`** (single round robin inside each group / pool), a *crossover*
+  stage draws the crossover pairs or a pool round robin, a *knockout* stage with one pool
+  draws **`seeded_bracket`**, and a *knockout* stage fed by two or more pools draws the
+  league's configured **finals pattern** when the sport defines one (Volleyball: F1
+  `semis_final_bronze` by default, via `tbl_league.finals_pattern`) or the pool
+  quarterfinals otherwise. Nothing is written until Preview/Generate is confirmed (Swiss
+  rounds and double-elimination brackets generate directly); seeds
   (`A1`, `D2`, `W SF1`, `L SF2`) are stored and shown on the match cards.
-* **Playoff patterns** are chosen per stage type: a *group* stage offers
-  **`round_robin_groups`** (single round robin inside each pool — Volleyball's Pool A/B),
-  a *knockout* stage offers the sport's **finals pattern** when the sport defines one
-  (Volleyball: `semis_final_bronze` = F1 default and `direct_final_bronze` = F2, both
-  shown at generation) followed by the quarterfinal / full-bracket patterns, and a
-  *placement* stage receives the bronze match from the finals pattern.
+* **The finals pattern comes from the league, not from a picker:** a *group* stage draws
+  `round_robin_groups` (Volleyball's Pool A/B), a *knockout* stage uses the league's
+  configured finals pattern, and a *placement* stage receives the bronze match from it.
+  A double-elimination stage always uses the graph engine (winners, losers and grand
+  final), and its generation form has no preview because the legacy preview only models
+  single-elimination brackets.
 * **Result types** (see §8.5 below) and **protests/corrections** work the same in stage leagues;
   a corrected result restores team statuses and removes/empties the rows that result created.
 

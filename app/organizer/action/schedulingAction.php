@@ -579,7 +579,7 @@ if ($protestIdParam > 0) {
         $leagueId = intval($_POST['league_id']);
         $stageId  = intval($_POST['stage_id']);
         $pattern  = (string)($_POST['pattern'] ?? '');
-        if (!array_key_exists($pattern, stagePatternLabels())) { sendResponse(400, 'Unknown bracket pattern.'); return; }
+        if (!array_key_exists($pattern, stagePatternLabels())) { sendResponse(400, 'Unknown draw pattern.'); return; }
         $stage = getStage($conn, $stageId);
         if (!$stage || (int)$stage['league_id'] !== $leagueId) { sendResponse(404, 'Stage not found for this league.'); return; }
 
@@ -597,7 +597,7 @@ if ($protestIdParam > 0) {
             ];
         }, $matched);
 
-        sendResponse(200, 'Bracket preview ready', ['matches' => $rows, 'errors' => $errors, 'total' => count($rows)]);
+        sendResponse(200, 'Draw preview ready', ['matches' => $rows, 'errors' => $errors, 'total' => count($rows)]);
         return;
     }
 
@@ -606,7 +606,7 @@ if ($protestIdParam > 0) {
         $leagueId = intval($_POST['league_id']);
         $stageId  = intval($_POST['stage_id']);
         $pattern  = (string)($_POST['pattern'] ?? '');
-        if (!array_key_exists($pattern, stagePatternLabels())) { sendResponse(400, 'Unknown bracket pattern.'); return; }
+        if (!array_key_exists($pattern, stagePatternLabels())) { sendResponse(400, 'Unknown draw pattern.'); return; }
         $stage = getStage($conn, $stageId);
         if (!$stage || (int)$stage['league_id'] !== $leagueId) { sendResponse(404, 'Stage not found for this league.'); return; }
 

@@ -13,7 +13,7 @@ protests and eligibility.
 
 | Manual | LMS |
 |---|---|
-| Â§6.1 Single Round Robin, **Pool A + Pool B**, all categories | Two groups on a *Group* stage + the **"Round robin inside each pool"** generator |
+| Â§6.1 Single Round Robin, **Pool A + Pool B**, all categories | Two groups on a *Group* stage + the **"Round robin inside each group / pool"** generator |
 | Â§6.1 "pool winners advance to the Finals, losing teams play for Third" together with Â§4.1's semifinal round | **Finals pattern** (per league, F1 default): see Â§4 below |
 | Â§4.1 BO3 from the Elimination Round to the Semifinals | `best_of = 3` on the pools stage (inherited by every match) |
 | Â§4.2 Final is **BO5** | The championship match is generated with `best_of = 5` |
@@ -83,8 +83,8 @@ coach, or any representative.
 
 1. **Add stage:** `Elimination (Pools)`, type *Group / Bracket stage*.
 2. **Add groups:** `Pool A`, `Pool B`; assign the teams to each pool.
-3. **Setup → Matches** → on the pools draw choose
-   **"Round robin inside each pool (single round robin)"** â†’ **Preview** â†’ **Generate**.
+3. **Setup → Matches** → the pools draw applies
+   **"Round robin inside each group / pool (single round robin)"** â†’ **Preview** â†’ **Generate**.
    Each pool plays a full single round robin (4 teams â†’ 6 games, 6 teams â†’ 15 games).
 4. Set date / time / venue / Committee per match and **Publish**; the Committee then submits
    the **set scores** (see Â§5).
@@ -93,10 +93,11 @@ The pool tables rank by the Volleyball rules automatically.
 
 ---
 
-## 4. Stage 2 â€” Finals (choose F1 or F2 when generating)
+## 4. Stage 2 â€” Finals (F1 by default, F2 as a league setting)
 
-Volleyball defaults to **F1**; both patterns stay selectable whenever you generate the
-bracket on the Schedule page. (The former *Standings â†’ Finals Format* panel was removed.)
+Volleyball defaults to **F1**. The Setup wizard applies the league's configured
+`tbl_league.finals_pattern` automatically when the finals bracket is generated; F2
+(`direct_final_bronze`) remains available as a league-level setting.
 
 | | **F1 â€” `semis_final_bronze`** (default) | **F2 â€” `direct_final_bronze`** |
 |---|---|---|
@@ -107,7 +108,7 @@ Setup: create a **Knockout** stage named `Finals` with **two groups**
 (`Pool A Qualifiers`, `Pool B Qualifiers`), point each group at its source pool
 (Stages â†’ *Fed by*), promote the **top 2** of each pool
 (*Advance qualifiers*: from `Elimination (Pools)` into `Finals`, teams taken from each group `2`),
-then generate the chosen pattern. The bronze match is created in the placement stage
+then generate the bracket; the league's configured finals pattern is applied. The bronze match is created in the placement stage
 and filled automatically from the semifinal losers; the champion is declared only when
 the BO5 final is completed.
 

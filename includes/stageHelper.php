@@ -475,7 +475,7 @@ function stagePatternLabels(): array {
         'crossover_cross'     => 'Crossover — A1 v D2, A2 v D1, B1 v C2, B2 v C1',
         'pool_qf'             => 'Quarterfinals — 1st v 4th and 2nd v 3rd per pool',
         'playoff_bracket'     => 'Full playoffs — QF, semifinals, final and Battle for Third',
-        'round_robin_groups'  => 'Round robin inside each pool (single round robin)',
+        'round_robin_groups'  => 'Round robin inside each group / pool (single round robin)',
         'seeded_bracket'      => 'Seeded bracket — 1 v N, 2 v N-1 … with byes',
         'semis_final_bronze'  => 'Finals (F1) — semifinals A1vB2 / B1vA2, then championship (BO5) and bronze match',
         'direct_final_bronze' => 'Finals (F2) — pool winners for the title (BO5), runners-up for bronze',

@@ -223,8 +223,9 @@ $wizardTaskStats = $wizardTaskStageId > 0 ? $wizardStageStats($wizardTaskStageId
 
 
 /* Fixture generation lives ONLY on Setup. The form below posts to the same
-   preview/generate endpoints the Schedule page used to duplicate, so the
-   pattern picker and the preview modal stay available in one place. */
+   preview/generate endpoints the Schedule page used to duplicate. The draw
+   pattern is not a question: the stage's default (first) pattern is posted as
+   a hidden value, so a format without a bracket never shows a bracket picker. */
 $wizardConnection = $conn ?? null;
 
 $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $id, $stages): string {
@@ -232,22 +233,32 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
     if (!function_exists('stageGenerationPatternOptions')) return '';
     $stageId = (int)($stage['id'] ?? 0);
     if ($stageId <= 0) return '';
+
+    /* The option list is in preference order (first = default) and also decides
+       whether this stage may be generated at all. */
     $options = stageGenerationPatternOptions($wizardConnection, (int)$id, $stage, count($stages));
     if (!$options) return '';
+    $defaultPattern = (string) array_key_first($options);
+    $defaultLabel   = (string) ($options[$defaultPattern] ?? '');
 
-    $optionsHtml = '';
-    foreach ($options as $patternKey => $patternLabel) {
-        $optionsHtml .= '<option value="' . htmlspecialchars((string)$patternKey, ENT_QUOTES) . '">'
-            . htmlspecialchars((string)$patternLabel) . '</option>';
+    /* The legacy preview engine only models single-elimination brackets, so a
+       double-elimination stage is generated without a misleading preview. */
+    $isDoubleElimination = function_exists('stageFormat') && stageFormat($stage) === 'double_elimination';
+    if ($isDoubleElimination) {
+        $defaultLabel = 'Double elimination — winners bracket, losers bracket and grand final';
     }
+    $previewButton = $isDoubleElimination
+        ? ''
+        : '<button type="button" class="btn btn-outline-primary js-wizard-preview"><i class="bi bi-eye me-1" aria-hidden="true"></i>Preview</button>';
 
     return '<div class="lsp-generate js-wizard-generate" data-stage-id="' . $stageId . '">'
         . '<div class="lsp-generate-field">'
-        . '<label class="form-label" for="wizardPattern' . $stageId . '">Bracket pattern</label>'
-        . '<select id="wizardPattern' . $stageId . '" name="pattern" class="form-select">' . $optionsHtml . '</select>'
+        . '<div class="form-label">Draw</div>'
+        . '<div class="lsp-generate-value">' . htmlspecialchars($defaultLabel, ENT_QUOTES) . '</div>'
+        . '<input type="hidden" name="pattern" value="' . htmlspecialchars($defaultPattern, ENT_QUOTES) . '">'
         . '</div>'
         . '<div class="lsp-generate-actions">'
-        . '<button type="button" class="btn btn-outline-primary js-wizard-preview"><i class="bi bi-eye me-1" aria-hidden="true"></i>Preview</button>'
+        . $previewButton
         . '<button type="button" class="btn btn-primary js-wizard-generate-btn"><i class="bi bi-magic me-1" aria-hidden="true"></i>Generate matches</button>'
         . '</div>'
         . '</div>';

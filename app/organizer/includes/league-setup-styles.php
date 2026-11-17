@@ -72,10 +72,10 @@
     .lsp-page .lsp-head-actions .btn, .lsp-page .lsp-advance-actions .btn,
     .lsp-page .lsp-inline-form .btn, .lsp-page .lsp-assign .btn { padding:8px 16px; border-radius:var(--lsp-r-sm); font-size:var(--lsp-fs-help); font-weight:600; box-shadow:none; }
     .lsp-page .lsp-actions .lp-link-btn { border:1.5px solid var(--lsp-line); }
-    /* Single fixture-generation block on the Matches step (pattern + preview + generate). */
+    /* Single fixture-generation block on the Matches step (default draw + preview + generate). */
     .lsp-page .lsp-generate { display:flex; align-items:flex-end; flex-wrap:wrap; gap:10px; margin-top:14px; padding:13px 14px; border:1px solid var(--lsp-line-soft); border-radius:var(--lsp-r-sm); background:var(--lsp-soft); }
     .lsp-page .lsp-generate-field { flex:1 1 240px; min-width:0; }
-    .lsp-page .lsp-generate-field .form-select { width:100%; }
+    .lsp-page .lsp-generate-value { padding:8px 12px; border:1.5px dashed var(--lsp-line); border-radius:var(--lsp-r-sm); background:#fff; font-size:var(--lsp-fs-help); line-height:1.4; color:var(--lsp-ink-2); }
     .lsp-page .lsp-generate-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
     .lsp-page .btn-primary { background:var(--lsp-navy); border-color:var(--lsp-navy); }
     .lsp-page .btn-primary:hover, .lsp-page .btn-primary:focus { background:#0d3160; border-color:#0d3160; }

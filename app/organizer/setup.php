@@ -946,14 +946,15 @@ include 'includes/header.php';
         }
     });
 
-    /* 5. Wizard: preview / generate the matches of the current stage using the
-          same endpoint the Schedule page uses. */
+    /* 5. Wizard: preview (when the format has one) / generate the matches of the
+          current stage using the same endpoint the Schedule page uses. The draw
+          pattern is a hidden default, so the JS reads whatever field carries it. */
     var wizardForm = document.querySelector('.js-wizard-generate');
     if (wizardForm) {
         var wizardLeagueId = <?= (int) $id ?>;
         var wizardCsrf = <?= json_encode(csrfToken()) ?>;
         var wizardStageId = Number(wizardForm.getAttribute('data-stage-id'));
-        var wizardPattern = wizardForm.querySelector('select[name="pattern"]');
+        var wizardPattern = wizardForm.querySelector('[name="pattern"]');
 
         var wizardPost = function (action, onDone) {
             var payload = {
@@ -976,24 +977,27 @@ include 'includes/header.php';
             });
         };
 
-        wizardForm.querySelector('.js-wizard-preview').addEventListener('click', function () {
-            wizardPost('previewStageMatches', function (res) {
-                if (res.status !== 200) { Swal.fire('Error', res.msg || 'Preview failed.', 'error'); return; }
-                if (!res.matches || !res.matches.length) {
-                    Swal.fire('Nothing to preview', (res.errors && res.errors[0]) || 'No teams are available for this pattern yet.', 'warning');
-                    return;
-                }
-                Swal.fire({
-                    title: 'Preview',
-                    html: '<strong>' + res.matches.length + '</strong> match' + (res.matches.length === 1 ? '' : 'es') + ' would be created. Generate them now?',
-                    showCancelButton: true,
-                    confirmButtonText: 'Generate',
-                    cancelButtonText: 'Close'
-                }).then(function (r) {
-                    if (r.isConfirmed) wizardForm.querySelector('.js-wizard-generate-btn').click();
+        var wizardPreview = wizardForm.querySelector('.js-wizard-preview');
+        if (wizardPreview) {
+            wizardPreview.addEventListener('click', function () {
+                wizardPost('previewStageMatches', function (res) {
+                    if (res.status !== 200) { Swal.fire('Error', res.msg || 'Preview failed.', 'error'); return; }
+                    if (!res.matches || !res.matches.length) {
+                        Swal.fire('Nothing to preview', (res.errors && res.errors[0]) || 'No teams are available for this draw yet.', 'warning');
+                        return;
+                    }
+                    Swal.fire({
+                        title: 'Preview',
+                        html: '<strong>' + res.matches.length + '</strong> match' + (res.matches.length === 1 ? '' : 'es') + ' would be created. Generate them now?',
+                        showCancelButton: true,
+                        confirmButtonText: 'Generate',
+                        cancelButtonText: 'Close'
+                    }).then(function (r) {
+                        if (r.isConfirmed) wizardForm.querySelector('.js-wizard-generate-btn').click();
+                    });
                 });
             });
-        });
+        }
 
         wizardForm.querySelector('.js-wizard-generate-btn').addEventListener('click', function () {
             var generateButton = this;
