@@ -203,7 +203,9 @@ after it is completed.
    `progression_status = 'Qualified'`. Confirming qualifiers early therefore makes the
    Schedule panel claim the league is finished.
 6. **Manual matches must be tagged to a stage** (Stage / Bracket selector) to count in
-   that stage's table/bracket. Untagged rows are standings-only.
+   that stage's table/bracket. Untagged rows are standings-only. Table stages also
+   require a stage group; bracket stages are drawn by the engine (manual entry is
+   limited to a standalone two-team final) so the node/round links stay consistent.
 7. **Round robin + grouping** uses the stage groups: assign teams in **Setup →
    Stages**, then generate the round robin inside those groups.
 8. **The standings formula is generic** (`W = 3`, `D = 1`, raw points-for/against).

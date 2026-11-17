@@ -289,6 +289,8 @@ $hasStages = !empty($leagueStages);
     .sc-bracket-check { flex:0 0 auto; font-size:11px; color:#0f7b4f; }
     .sc-bracket-score { flex:0 0 auto; min-width:18px; text-align:right; font-size:11.5px; font-weight:700; color:#123f70; }
     .sc-bracket-foot { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:4px; }
+.sc-bracket-action { margin-left:auto; display:inline-flex; align-items:center; gap:4px; padding:2px 7px; border:1px solid #dbe4f0; border-radius:6px; background:#fff; color:#1e40af; font-size:10px; font-weight:600; cursor:pointer; }
+.sc-bracket-action:hover { background:#eff6ff; border-color:#bfdbfe; }
     .sc-bracket-chip { display:inline-flex; align-items:center; padding:2px 8px; border-radius:20px; font-size:9.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase; }
     .sc-bracket-chip.is-draft { background:#eef2f7; color:#64748b; }
     .sc-bracket-chip.is-scheduled { background:#dbeafe; color:#1e40af; }
@@ -531,6 +533,12 @@ $hasStages = !empty($leagueStages);
 
                                 <!-- Manual match pane -->
                                 <div class="sc-builder-pane is-active" role="tabpanel" data-builder-pane="manual">
+                                    <?php if (!$hasStages): ?>
+                                    <div class="alert alert-info d-flex align-items-start gap-2">
+                                        <i class="bi bi-info-circle-fill"></i>
+                                        <span><strong>No competition format yet.</strong> Matches added here are standings-only and will block applying a competition format later. Choose a format in <strong>Setup → Format</strong> first so matches count in a stage table or bracket.</span>
+                                    </div>
+                                    <?php endif; ?>
                                     <form id="manualMatchForm" class="row g-3 lp-form">
                                         <div class="col-lg-5">
                                             <label class="form-label">Team A</label>
@@ -585,18 +593,37 @@ $hasStages = !empty($leagueStages);
                                         </div>
                                         <?php if ($leagueStages): ?>
                                         <div class="col-md-4">
-                                            <label class="form-label">Stage / Bracket</label>
-                                            <select name="stage_group_id" class="form-select">
+                                            <label class="form-label" for="manualStage">Stage / Bracket</label>
+                                            <select name="stage_id" id="manualStage" class="form-select">
                                                 <option value="0">Not a stage match</option>
                                                 <?php foreach ($leagueStages as $stageOption): ?>
-                                                    <optgroup label="<?= htmlspecialchars($stageOption['name']) ?> — <?= htmlspecialchars($stageTypeLabels[$stageOption['stage_type']] ?? $stageOption['stage_type']) ?>">
-                                                        <?php foreach ($stageOption['groups'] as $groupOption): ?>
-                                                            <option value="<?= (int)$groupOption['id'] ?>"><?= htmlspecialchars($groupOption['name']) ?> · <?= (int)$groupOption['team_count'] ?> team(s)</option>
-                                                        <?php endforeach; ?>
-                                                    </optgroup>
+                                                    <option value="<?= (int)$stageOption['id'] ?>"
+                                                            data-stage-type="<?= htmlspecialchars((string)($stageOption['stage_type'] ?? ''), ENT_QUOTES) ?>"
+                                                            data-stage-format="<?= htmlspecialchars((string)($stageOption['stage_format'] ?? ''), ENT_QUOTES) ?>">
+                                                        <?= htmlspecialchars($stageOption['name']) ?> — <?= htmlspecialchars($stageTypeLabels[$stageOption['stage_type']] ?? $stageOption['stage_type']) ?>
+                                                    </option>
                                                 <?php endforeach; ?>
                                             </select>
-                                            <div class="form-text">Tag the match so it counts in that stage's table/bracket.</div>
+                                            <div class="form-text">Pick a stage to make the match count in its table or bracket.</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label" for="manualStageGroup">Stage Group <span class="text-muted">(tables require one)</span></label>
+                                            <select name="stage_group_id" id="manualStageGroup" class="form-select">
+                                                <option value="0">Stage-level (no group)</option>
+                                                <?php foreach ($leagueStages as $stageOption): ?>
+                                                    <?php foreach ($stageOption['groups'] as $groupOption): ?>
+                                                        <option value="<?= (int)$groupOption['id'] ?>" data-stage-id="<?= (int)$stageOption['id'] ?>">
+                                                            <?= htmlspecialchars($stageOption['name']) ?> · <?= htmlspecialchars($groupOption['name']) ?> · <?= (int)$groupOption['team_count'] ?> team(s)
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <div class="form-text" id="manualStageHint">Not a stage match — this result only feeds the overall standings.</div>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label" for="manualRound">Round</label>
+                                            <input type="number" name="round" id="manualRound" class="form-control" min="1" max="64" value="1">
+                                            <div class="form-text">Swiss / bracket round.</div>
                                         </div>
                                         <?php endif; ?>
                                         <?php if ((int)($league['grouping_enabled'] ?? 0) === 1): ?>
@@ -1155,6 +1182,7 @@ $hasStages = !empty($leagueStages);
             // Bye rows are auto-completed brackets slots (one team, seed_b = BYE):
             // they are listed for picture completeness, never as playable matches.
             const isBye = isByeMatch(match);
+            const isTbd = !isBye && (Number(match.team_a) === 0 || Number(match.team_b) === 0);
             const isCompleted = !isBye && status === 'completed';
             const isDraft = !match.published_at;
             const statusClass = isDraft ? 'is-neutral'
@@ -1180,8 +1208,9 @@ $hasStages = !empty($leagueStages);
                 ? `<button type="button" class="league-icon-btn league-action-warn" title="Log protest / reopen result" aria-label="Log protest or reopen result" onclick="protestResult(${match.id})"><i class="bi bi-flag" aria-hidden="true"></i></button>`
                 : `<button type="button" class="league-icon-btn league-action-warn" title="Reschedule" aria-label="Reschedule" onclick="editMatch(${match.id},'${escapeQuotes(match.date || '')}','${escapeQuotes(match.time || '')}','${escapeQuotes(match.venue || '')}', '${escapeQuotes(match.committee_user_id || '')}')"><i class="bi bi-calendar-event" aria-hidden="true"></i></button>`;
             // Published matches render nothing extra here so the Reschedule and
-            // Archive icon buttons sit side by side. Drafts still get Publish.
-            const publishButton = match.published_at
+            // Archive icon buttons sit side by side. Drafts get Publish once both
+            // teams are known; a TBD row waits for the previous round.
+            const publishButton = match.published_at || isTbd
                 ? ''
                 : `<button type="button" class="league-icon-btn league-action-ok" title="Publish" aria-label="Publish" onclick="publishMatch(${match.id})"><i class="bi bi-send-fill" aria-hidden="true"></i></button>`;
             // The conflict payload travels through a data attribute so the JSON
@@ -1215,7 +1244,9 @@ $hasStages = !empty($leagueStages);
                 : '';
             const statusChip = isBye
                 ? '<span class="lp-row-status is-neutral" title="No opponent - advances automatically">Bye</span>'
-                : `<span class="lp-row-status ${statusClass}">${escapeHtml(match.status || 'Draft')}</span>`;
+                : (isTbd
+                    ? '<span class="lp-row-status is-neutral" title="Waiting for the previous round">TBD</span>'
+                    : `<span class="lp-row-status ${statusClass}">${escapeHtml(match.status || 'Draft')}</span>`);
             const actionCell = isBye
                 ? `<span class="sc-published" title="No opponent - advances automatically"><i class="bi bi-check2-circle" aria-hidden="true"></i>Auto-advanced</span>
                     <button type="button" class="league-icon-btn league-action-muted" title="Archive" aria-label="Archive" onclick="deleteMatch(${match.id})"><i class="bi bi-archive" aria-hidden="true"></i></button>`
@@ -1393,10 +1424,14 @@ $hasStages = !empty($leagueStages);
             const title = isMatchBye
                 ? 'Bye - the team advances automatically'
                 : (match.stage_name || 'Knockout') + ' - ' + bracketRoundLabel(roundCount, roundNumber);
+            const canSchedule = !isMatchBye && status !== 'completed';
+            const scheduleAction = canSchedule
+                ? `<button type="button" class="sc-bracket-action" title="Set date, time, venue and Committee" aria-label="Set date, time, venue and Committee" onclick="editMatch(${match.id},'${escapeQuotes(match.date || '')}','${escapeQuotes(match.time || '')}','${escapeQuotes(match.venue || '')}','${escapeQuotes(match.committee_user_id || '')}')"><i class="bi bi-calendar-event" aria-hidden="true"></i>Schedule</button>`
+                : '';
             return `<div class="sc-bracket-match${isMatchBye ? ' is-bye' : ''}${isTbd ? ' is-tbd' : ''}" title="${escapeAttr(title)}">
                 ${bracketSide(match, 'a')}
                 ${bracketSide(match, 'b')}
-                <div class="sc-bracket-foot">${chips.join('')}</div>
+                <div class="sc-bracket-foot">${chips.join('')}${scheduleAction}</div>
             </div>`;
         }
 
@@ -1611,6 +1646,88 @@ $hasStages = !empty($leagueStages);
                 }
             });
         });
+
+        // Stage / group / round guidance for the manual form. A group-less
+        // stage (single or double elimination, placement) can now be selected
+        // on its own; the group selector is narrowed to the chosen stage.
+        (function () {
+            const stageSelect = document.getElementById('manualStage');
+            const groupSelect = document.getElementById('manualStageGroup');
+            const roundInput = document.getElementById('manualRound');
+            const hint = document.getElementById('manualStageHint');
+            if (!stageSelect || !groupSelect) return;
+
+            const groupOptions = Array.prototype.slice.call(
+                groupSelect.querySelectorAll('option[data-stage-id]')
+            );
+
+            const hintFor = function (option) {
+                if (!option || option.value === '0') {
+                    return 'Not a stage match — this result only feeds the overall standings.';
+                }
+                const type = option.getAttribute('data-stage-type') || '';
+                const format = option.getAttribute('data-stage-format') || '';
+                if (format === 'double_elimination') {
+                    return 'Double elimination fixtures must be generated in Setup → Matches; a manual row cannot feed the losers bracket.';
+                }
+                if (type === 'placement') {
+                    return 'Placement matches are filled automatically from the semifinal losers.';
+                }
+                if (type === 'knockout') {
+                    return 'Bracket stage — generated brackets reject manual rows. A two-team final can be entered manually; larger brackets are generated in Setup.';
+                }
+                if (format === 'swiss') {
+                    return 'Swiss stage — set the round you are entering. Later rounds can be generated in Setup.';
+                }
+                return 'Table stage — choose the group so the match counts in that table. Both teams must belong to it.';
+            };
+
+            const sync = function () {
+                const stageId = stageSelect.value;
+                const selectedStage = stageSelect.selectedOptions && stageSelect.selectedOptions[0];
+                const stageType = selectedStage ? (selectedStage.getAttribute('data-stage-type') || '') : '';
+
+                groupOptions.forEach(function (option) {
+                    const belongs = stageId !== '0' && option.getAttribute('data-stage-id') === stageId;
+                    option.hidden = !belongs;
+                    option.disabled = !belongs;
+                    if (!belongs && option.selected) groupSelect.value = '0';
+                });
+
+                if (stageId === '0') {
+                    groupSelect.value = '0';
+                    groupSelect.disabled = true;
+                    if (roundInput) roundInput.disabled = true;
+                } else {
+                    groupSelect.disabled = false;
+                    const visibleGroups = groupOptions.filter(function (option) { return !option.disabled; });
+                    if (!visibleGroups.length) {
+                        groupSelect.value = '0';
+                        groupSelect.disabled = true;
+                    } else if ((stageType === 'group' || stageType === 'crossover') && groupSelect.value === '0') {
+                        groupSelect.value = visibleGroups[0].value;
+                    }
+                    if (roundInput) roundInput.disabled = false;
+                }
+
+                if (hint) hint.textContent = hintFor(selectedStage);
+            };
+
+            stageSelect.addEventListener('change', sync);
+            groupSelect.addEventListener('change', function () {
+                const chosen = groupSelect.selectedOptions && groupSelect.selectedOptions[0];
+                if (chosen && chosen.getAttribute('data-stage-id')) {
+                    stageSelect.value = chosen.getAttribute('data-stage-id');
+                }
+                sync();
+            });
+
+            const form = document.getElementById('manualMatchForm');
+            if (form) {
+                form.addEventListener('reset', function () { setTimeout(sync, 0); });
+            }
+            sync();
+        })();
 
         // Manual match form
         document.getElementById('manualMatchForm').addEventListener('submit', function(e) {

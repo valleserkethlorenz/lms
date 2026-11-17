@@ -129,6 +129,12 @@ Manual fixture creation stays on the Schedule page's **Manual match** form. The 
 manual matrix, stage timeline editing, cut-off variants and seeding-board overrides are
 no longer part of the interface.
 
+A manual fixture must choose a stage. Table and pool stages also require one of their
+groups, and both teams must already belong to the selected stage/group. Bracket stages
+are drawn by the tournament engine: a generated bracket rejects manual rows, while an
+empty stage accepts only a standalone two-team final. Placement matches are filled from
+the semifinal losers.
+
 ---
 
 ## 4. Scheduling

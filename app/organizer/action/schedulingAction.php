@@ -115,6 +115,10 @@ if ($protestIdParam > 0) {
             sendResponse(409, 'Schedule generation is locked while a returned application is still within its correction period.');
             return;
         }
+        if (function_exists('getLeagueStages') && getLeagueStages($conn, $leagueId)) {
+            sendResponse(400, 'This league has a competition structure. Generate its fixtures in Setup → Matches, or use the stage-tagged manual match form.');
+            return;
+        }
 
         $approvedCountStmt = $conn->prepare("SELECT COUNT(*) as cnt FROM tbl_team WHERE league_id = ? AND LOWER(status) = 'approved'");
         $approvedCountStmt->bind_param('i', $leagueId);
@@ -185,10 +189,12 @@ if ($protestIdParam > 0) {
 
     if (isset($_POST['publishMatch'])) {
         $scheduleId=(int)$_POST['schedule_id'];
-        $stmt=$conn->prepare("SELECT s.*,l.league_name,ta.team_name AS team_a_name,tb.team_name AS team_b_name FROM tbl_schedule s JOIN tbl_league l ON l.id=s.league_id JOIN tbl_team ta ON ta.id=s.team_a JOIN tbl_team tb ON tb.id=s.team_b WHERE s.id=? FOR UPDATE");
+        $stmt=$conn->prepare("SELECT s.*,l.league_name,ta.team_name AS team_a_name,tb.team_name AS team_b_name FROM tbl_schedule s JOIN tbl_league l ON l.id=s.league_id LEFT JOIN tbl_team ta ON ta.id=s.team_a LEFT JOIN tbl_team tb ON tb.id=s.team_b WHERE s.id=? FOR UPDATE");
+        if(!$stmt){ sendResponse(500,'Database error: '.$conn->error); return; }
         $conn->begin_transaction(); $stmt->bind_param('i',$scheduleId); $stmt->execute(); $match=$stmt->get_result()->fetch_assoc(); $stmt->close();
         if(!$match){ $conn->rollback(); sendResponse(404,'Match not found.'); return; }
         if($match['published_at']){ $conn->rollback(); sendResponse(200,'Match is already published.'); return; }
+        if((int)$match['team_a'] <= 0 || (int)$match['team_b'] <= 0){ $conn->rollback(); sendResponse(422,'Both teams must be decided before this match can be published.'); return; }
         $eligibleStmt=$conn->prepare("SELECT COUNT(*) AS c FROM tbl_team WHERE id IN (?,?) AND league_id=? AND LOWER(status)='approved' AND progression_status<>'Eliminated'");
         $eligibleStmt->bind_param('iii',$match['team_a'],$match['team_b'],$match['league_id']); $eligibleStmt->execute(); $eligibleCount=(int)$eligibleStmt->get_result()->fetch_assoc()['c']; $eligibleStmt->close();
         if($eligibleCount!==2){ $conn->rollback(); sendResponse(422,'This Draft includes an eliminated or ineligible team and cannot be published.'); return; }
@@ -255,7 +261,7 @@ if ($protestIdParam > 0) {
         if (!isActiveUtilityVenue($conn, $venue)) { sendResponse(400, 'Select an active venue from Utilities.'); return; }
         $committeeUserId = intval($_POST['committee_user_id'] ?? 0);
         $leagueGroupId = intval($_POST['league_group_id'] ?? 0);
-        $round = intval($_POST['round'] ?? 1);
+        $round = max(1, min(64, intval($_POST['round'] ?? 1)));
         
         // Validate teams are different
         if ($teamAId === $teamBId) {
@@ -289,28 +295,162 @@ if ($protestIdParam > 0) {
         $status = 'Draft';
         $conflictReason = count($allConflicts) > 0 ? json_encode($allConflicts) : null;
         
-        // Optional stage / bracket tagging (ANP2026 format). The stage is derived
-        // from the chosen stage group so the two can never disagree.
+        // Optional stage / bracket tagging (ANP2026 format). A stage can be
+        // selected directly (needed for group-less brackets and placement) and
+        // an optional stage group narrows a table match to one group. The old
+        // form posted only the group, so that path stays supported.
+        $stageInput      = intval($_POST['stage_id'] ?? 0);
         $stageGroupInput = intval($_POST['stage_group_id'] ?? 0);
         $stageId = null; $stageGroupId = null; $stageTag = null; $bracketTag = null;
+        $bestOf = null;
+
+        if (($stageInput > 0 || $stageGroupInput > 0) && function_exists('ensureTournamentEngineSchema')) {
+            ensureTournamentEngineSchema($conn);
+        }
+
+        $stageRow = null;
+        if ($stageInput > 0) {
+            $stageRow = getStage($conn, $stageInput);
+            if (!$stageRow || (int)$stageRow['league_id'] !== $leagueId) {
+                sendResponse(400, 'The selected stage does not belong to this league.');
+                return;
+            }
+        }
+
         if ($stageGroupInput > 0) {
-            $sgStmt = $conn->prepare("SELECT s.id AS stage_id, s.stage_type, s.league_id
+            $sgStmt = $conn->prepare("SELECT g.id AS group_id, g.stage_id, s.league_id
                                       FROM tbl_league_stage_group g JOIN tbl_league_stage s ON s.id = g.stage_id
                                       WHERE g.id = ? LIMIT 1");
+            if (!$sgStmt) {
+                sendResponse(500, 'Database error: ' . $conn->error);
+                return;
+            }
             $sgStmt->bind_param('i', $stageGroupInput); $sgStmt->execute();
             $sgRow = $sgStmt->get_result()->fetch_assoc(); $sgStmt->close();
             if (!$sgRow || (int)$sgRow['league_id'] !== $leagueId) {
                 sendResponse(400, 'The selected stage group does not belong to this league.');
                 return;
             }
-            $stageId      = (int)$sgRow['stage_id'];
+            if ($stageRow && (int)$stageRow['id'] !== (int)$sgRow['stage_id']) {
+                sendResponse(400, 'The selected group belongs to a different stage.');
+                return;
+            }
+            if (!$stageRow) {
+                $stageRow = getStage($conn, (int)$sgRow['stage_id']);
+                if (!$stageRow || (int)$stageRow['league_id'] !== $leagueId) {
+                    sendResponse(400, 'The selected stage group does not belong to this league.');
+                    return;
+                }
+            }
             $stageGroupId = $stageGroupInput;
-            $stageTag     = $sgRow['stage_type'];
-            $bracketTag   = in_array($sgRow['stage_type'], ['knockout', 'placement'], true) ? 'knockout' : null;
         }
 
-        $sql = "INSERT INTO tbl_schedule (league_id, league_group_id, stage_id, stage_group_id, team_a, team_b, date, time, venue, round, status, is_automated, conflict_detected, conflict_reason, committee_user_id, stage, bracket)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        if ($stageRow) {
+            $stageId      = (int)$stageRow['id'];
+            $stageType    = (string)$stageRow['stage_type'];
+            $stageFormat  = stageFormat($stageRow);
+            $hasGraph     = stageHasGraphNodes($conn, $leagueId, $stageId);
+            $hasGenerated = stageHasGeneratedFixtures($conn, $leagueId, $stageId);
+
+            if (($stageRow['stage_status'] ?? 'Active') === 'Locked') {
+                sendResponse(409, 'This stage is locked. Activate or reopen it before adding a match.');
+                return;
+            }
+
+            // Both teams must be participants of the stage/group. This prevents
+            // a manually tagged match from polluting another group's table.
+            $participantIds = stageParticipantTeamIds($conn, $leagueId, $stageId, $stageGroupId);
+
+            $stageError = stageManualMatchError($stageType, $stageFormat, $hasGraph, $hasGenerated, $stageGroupId, count($participantIds));
+            if ($stageError !== null) {
+                sendResponse(400, $stageError);
+                return;
+            }
+
+            if (empty($participantIds)) {
+                sendResponse(400, 'This stage has no teams yet. Assign or promote the teams first.');
+                return;
+            }
+            if (!isset($participantIds[$teamAId]) || !isset($participantIds[$teamBId])) {
+                sendResponse(400, 'Both teams must be assigned to the selected stage' . ($stageGroupId ? ' group' : '') . '.');
+                return;
+            }
+
+            // A round robin group cannot replay a pairing; a knockout cannot
+            // meet twice. Swiss rematches are allowed (small fields force them).
+            if (in_array($stageType, ['group', 'crossover', 'knockout'], true)) {
+                if ($stageType === 'knockout') {
+                    $dupStmt = $conn->prepare("SELECT 1 FROM tbl_schedule
+                                                WHERE league_id = ? AND stage_id = ?
+                                                  AND (is_archived = 0 OR is_archived IS NULL)
+                                                  AND ((team_a = ? AND team_b = ?) OR (team_a = ? AND team_b = ?))
+                                                LIMIT 1");
+                    $dupStmt->bind_param('iiiiii', $leagueId, $stageId, $teamAId, $teamBId, $teamBId, $teamAId);
+                } else {
+                    $dupStmt = $conn->prepare("SELECT 1 FROM tbl_schedule
+                                                WHERE league_id = ? AND stage_id = ? AND stage_group_id = ?
+                                                  AND (is_archived = 0 OR is_archived IS NULL)
+                                                  AND ((team_a = ? AND team_b = ?) OR (team_a = ? AND team_b = ?))
+                                                LIMIT 1");
+                    $dupStmt->bind_param('iiiiiii', $leagueId, $stageId, $stageGroupId, $teamAId, $teamBId, $teamBId, $teamAId);
+                }
+                if ($dupStmt) {
+                    $dupStmt->execute();
+                    $alreadyPlayed = (bool)$dupStmt->get_result()->fetch_row();
+                    $dupStmt->close();
+                    if ($alreadyPlayed) {
+                        sendResponse(409, 'These teams already have a match in this stage' . ($stageType === 'knockout' ? '' : ' group') . '.');
+                        return;
+                    }
+                }
+            }
+
+            if ($stageFormat === 'swiss') {
+                $planned = (int)($stageRow['rounds_planned'] ?? 0);
+                if ($planned > 0 && $round > $planned) {
+                    sendResponse(400, 'This Swiss stage is planned for ' . $planned . ' rounds.');
+                    return;
+                }
+                if ($round > 1 && !stageRoundComplete($conn, $leagueId, $stageId, $round - 1)) {
+                    sendResponse(409, 'Finish every match of round ' . ($round - 1) . ' before adding round ' . $round . '.');
+                    return;
+                }
+                $lockStmt = $conn->prepare("SELECT 1 FROM tbl_schedule
+                                             WHERE league_id = ? AND stage_id = ? AND round = ? AND locked = 1
+                                               AND (is_archived = 0 OR is_archived IS NULL)
+                                             LIMIT 1");
+                if ($lockStmt) {
+                    $lockStmt->bind_param('iii', $leagueId, $stageId, $round);
+                    $lockStmt->execute();
+                    $roundLocked = (bool)$lockStmt->get_result()->fetch_row();
+                    $lockStmt->close();
+                    if ($roundLocked) {
+                        sendResponse(409, 'Round ' . $round . ' is locked. Use the Swiss round generator for the next round.');
+                        return;
+                    }
+                }
+            }
+
+            $stageTag     = $stageType;
+            $bracketTag   = in_array($stageType, ['knockout', 'placement'], true) ? 'knockout' : null;
+
+            if ($stageType === 'knockout') {
+                $participantCount = count($participantIds);
+                $totalRounds = max(1, bracketRoundCount($participantCount));
+                $bestOf = bracketBestOf($round, $totalRounds, [
+                    'best_of'       => (int)($stageRow['best_of'] ?? 0),
+                    'final_best_of' => (int)($stageRow['final_best_of'] ?? 0),
+                ]);
+                if ($bestOf === null) {
+                    $profile = getLeagueSportProfile($conn, $leagueId);
+                    $bestOf = sportProfileSeriesLength($profile, $round >= $totalRounds);
+                }
+                if ((int)$bestOf <= 0) $bestOf = null;
+            }
+        }
+
+        $sql = "INSERT INTO tbl_schedule (league_id, league_group_id, stage_id, stage_group_id, team_a, team_b, date, time, venue, round, status, is_automated, conflict_detected, conflict_reason, committee_user_id, stage, bracket, best_of)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $stmt = $conn->prepare($sql);
         if (!$stmt) {
@@ -323,7 +463,7 @@ if ($protestIdParam > 0) {
         
         $committeeDbId = $committeeUserId > 0 ? $committeeUserId : null;
         $stmt->bind_param(
-            "iiiiiisssisiisiss",
+            "iiiiiisssisiisissi",
             $leagueId,
             $groupDbId,
             $stageId,
@@ -340,7 +480,8 @@ if ($protestIdParam > 0) {
             $conflictReason,
             $committeeDbId,
             $stageTag,
-            $bracketTag
+            $bracketTag,
+            $bestOf
         );
         
         if ($stmt->execute()) {
@@ -399,7 +540,9 @@ if ($protestIdParam > 0) {
             return;
         }
 
-        $statusStmt = $conn->prepare("SELECT status, date, time, committee_user_id, published_at FROM tbl_schedule WHERE id = ?");
+        $statusStmt = $conn->prepare("SELECT status, date, time, committee_user_id, published_at,
+                                             stage_id, stage_group_id, team_a, team_b, league_id
+                                      FROM tbl_schedule WHERE id = ?");
         if (!$statusStmt) {
             sendResponse(500, "Database error: " . $conn->error);
             return;
@@ -449,6 +592,22 @@ if ($protestIdParam > 0) {
                 $teamCheck=$conn->prepare("SELECT 1 FROM tbl_team t JOIN tbl_schedule s ON s.league_id=t.league_id WHERE t.id=? AND s.id=? AND LOWER(t.status)='approved' AND t.progression_status<>'Eliminated'");
                 $teamCheck->bind_param('ii',$candidateId,$scheduleId); $teamCheck->execute(); $validCandidate=(bool)$teamCheck->get_result()->fetch_row(); $teamCheck->close();
                 if(!$validCandidate){ sendResponse(400,'An eliminated or invalid team cannot be assigned to this match.'); return; }
+            }
+
+            if (!empty($statusRow['stage_id'])) {
+                $finalTeamA = $teamAId > 0 ? $teamAId : (int)$statusRow['team_a'];
+                $finalTeamB = $teamBId > 0 ? $teamBId : (int)$statusRow['team_b'];
+                $stageGroupId = !empty($statusRow['stage_group_id']) ? (int)$statusRow['stage_group_id'] : null;
+                $participants = stageParticipantTeamIds(
+                    $conn,
+                    (int)$statusRow['league_id'],
+                    (int)$statusRow['stage_id'],
+                    $stageGroupId
+                );
+                if (empty($participants) || !isset($participants[$finalTeamA]) || !isset($participants[$finalTeamB])) {
+                    sendResponse(400, 'Both teams must belong to the match\'s stage' . ($stageGroupId ? ' group' : '') . '.');
+                    return;
+                }
             }
         }
         
@@ -545,21 +704,44 @@ if ($protestIdParam > 0) {
             sendResponse(403, "You may archive matches only in your own leagues.");
             return;
         }
-        $sql = "UPDATE tbl_schedule SET is_archived=1, archived_at=NOW(), status='Cancelled' WHERE id = ?";
-        $stmt = $conn->prepare($sql);
-        if (!$stmt) {
+
+        $infoStmt = $conn->prepare("SELECT league_id, status FROM tbl_schedule WHERE id = ? LIMIT 1");
+        if (!$infoStmt) {
             sendResponse(500, "Database error: " . $conn->error);
             return;
         }
-        
-        $stmt->bind_param("i", $scheduleId);
-        
-        if ($stmt->execute()) {
-            $stmt->close();
-            sendResponse(200, "Match deleted successfully");
-        } else {
-            sendResponse(500, "Failed to delete match");
+        $infoStmt->bind_param('i', $scheduleId);
+        $infoStmt->execute();
+        $matchInfo = $infoStmt->get_result()->fetch_assoc();
+        $infoStmt->close();
+        if (!$matchInfo) {
+            sendResponse(404, "Match not found.");
+            return;
         }
+
+        $reversed = null;
+        $conn->begin_transaction();
+        try {
+            // Voiding a completed match must undo the advancement/elimination it
+            // caused, otherwise later rounds keep teams that no longer qualify.
+            if (strtolower((string)$matchInfo['status']) === 'completed') {
+                $reversed = reverseProgression($conn, (int)$matchInfo['league_id'], $scheduleId);
+            }
+            $stmt = $conn->prepare("UPDATE tbl_schedule SET is_archived=1, archived_at=NOW(), status='Cancelled' WHERE id = ?");
+            if (!$stmt) throw new RuntimeException('Database error: ' . $conn->error);
+            $stmt->bind_param('i', $scheduleId);
+            $stmt->execute();
+            $stmt->close();
+            $conn->commit();
+        } catch (Throwable $deleteFailure) {
+            $conn->rollback();
+            sendResponse(500, 'Failed to delete match: ' . $deleteFailure->getMessage());
+            return;
+        }
+
+        $reversalNote = $reversed !== null ? '; its recorded progression was reversed' : '';
+        auditLog($conn, 'Archive Match', "Archived match ID $scheduleId$reversalNote (league ID " . (int)$matchInfo['league_id'] . ")");
+        sendResponse(200, 'Match deleted successfully' . ($reversalNote ? $reversalNote . '.' : '.'));
         return;
     }
 
