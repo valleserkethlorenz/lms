@@ -71,6 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .btn-r{background:var(--primary);border:none;color:#fff;padding:10px 20px;border-radius:8px;width:100%;font-size:14px;cursor:pointer}
         .btn-r:hover{background:#0d2257;color:#fff}
         .ml{font-size:13px;color:#64748b}.ml:hover{color:var(--primary)}
+        .home-link{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:#53617a;font-size:13px;font-weight:600;text-decoration:none}
+        .home-link:hover{color:var(--primary);text-decoration:underline}
     </style>
 </head>
 <body>
@@ -101,6 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn btn-r mb-3"><i class="bi bi-send me-1"></i> Send Reset Link</button>
         </form>
         <div class="text-center"><a class="ml" href="login.php"><i class="bi bi-arrow-left me-1"></i> Back to Login</a></div>
+        <div class="text-center"><a class="home-link" href="index.php"><i class="bi bi-house-door"></i> Back to Home</a></div>
     </div>
 </div>
 <script src="assets/vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>

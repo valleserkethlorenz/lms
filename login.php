@@ -79,6 +79,8 @@ include 'includes/header.php';
     .login-secondary-link{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;min-height:42px;padding:8px 10px;border:1px solid #dfe6ef;border-radius:8px;background:#f8fafc;color:#53617a;font-size:12px;font-weight:600;line-height:1.2;text-align:center;text-decoration:none}
     .login-secondary-link:hover{border-color:#cbd9ee;background:#eef4ff;color:var(--primary);text-decoration:none}
     .login-secondary-link i{flex:0 0 auto;font-size:13px}
+    .login-home-link{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:#53617a;font-size:13px;font-weight:600;text-decoration:none}
+    .login-home-link:hover{color:var(--primary);text-decoration:underline}
 
     #result{color:#dc2626;margin-top:8px}
 
@@ -155,6 +157,7 @@ include 'includes/header.php';
                         <a class="login-secondary-link" href="<?= htmlspecialchars($registerHref, ENT_QUOTES, 'UTF-8') ?>"><i class="bi bi-person-plus"></i><span>Create account</span></a>
                         <a class="login-secondary-link" href="forgot-password.php"><i class="bi bi-key"></i><span>Forgot password</span></a>
                     </div>
+                    <a class="login-home-link" href="index.php"><i class="bi bi-house-door"></i><span>Back to Home</span></a>
                     <div id="result"></div>
                 </div>
             </div>
