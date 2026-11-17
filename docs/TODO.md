@@ -116,6 +116,13 @@ end date as inclusive of the whole day.
 - [x] League overview documents download through
       `includes/downloadLeagueDocument.php` (Cloudinary links used to open in a
       new tab; `download` is ignored cross-origin)
+- [x] Hosted 30 s proxy limit: registration commits the accepted files locally,
+      answers `201`, and only then publishes them to Cloudinary (after
+      `fastcgi_finish_request()`), so a full roster no longer dies with HTTP 503.
+      The automatic checker is capped by `LMS_DOCUMENT_SYNC_BUDGET` (12 s on
+      Heroku) and unfinished documents fall back to manual review; the client
+      downscales photos harder (1600 px / 0.8) because the proxy also counts the
+      upload time. Cloudinary calls now carry real upload/connect timeouts.
 - [x] Tests: `RegistrationWindowGateTest`, `DocumentAssetsTest`
 - [ ] Browser sign-off on a real phone: closing-day submission, missing-document
       summary, six camera photos, correction resubmission

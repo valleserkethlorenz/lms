@@ -25,8 +25,16 @@ class StorageService
                 'api_key'    => self::$config['api_key'] ?? '',
                 'api_secret' => self::$config['api_secret'] ?? '',
             ],
-            'url' => [
-                'timeout' => 30,
+            // Uploads are the slow call in the registration path. The SDK
+            // default is 60 s per upload, which is longer than a hosted proxy
+            // allows for the whole request. Bound every Cloudinary call so one
+            // slow asset can never hold a worker (or the user's tab) hostage.
+            // NOTE: 'url' => ['timeout' => ...] used to sit here, but UrlConfig
+            // has no timeout key, so the SDK silently ignored it.
+            'api' => [
+                'timeout'            => 20,
+                'upload_timeout'     => 25,
+                'connection_timeout' => 10,
             ],
         ]);
         self::$enabled = true;
@@ -82,7 +90,12 @@ class StorageService
         try {
             $opts = ['resource_type' => $resourceType];
             if (!empty($transformations)) $opts['transformation'] = $transformations;
-            return (string)self::$cloudinary->asset($publicId, $opts)->toUrl();
+            $assetMethod = match ($resourceType) {
+                'video' => 'video',
+                'raw' => 'raw',
+                default => 'image',
+            };
+            return (string)self::$cloudinary->{$assetMethod}($publicId)->toUrl();
         } catch (\Throwable $e) {
             error_log('[StorageService] URL: ' . $e->getMessage());
             return '';
@@ -102,7 +115,12 @@ class StorageService
                     'startTime' => time(), 'expiration' => time() + $expiresIn,
                 ],
             ];
-            return (string)self::$cloudinary->asset($publicId, $opts)->toUrl();
+            $assetMethod = match ($resourceType) {
+                'video' => 'video',
+                'raw' => 'raw',
+                default => 'image',
+            };
+            return (string)self::$cloudinary->{$assetMethod}($publicId)->toUrl();
         } catch (\Throwable $e) {
             error_log('[StorageService] SignedURL: ' . $e->getMessage());
             return '';

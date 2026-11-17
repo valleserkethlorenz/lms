@@ -39,6 +39,47 @@ if (!function_exists('documentQualityConfig')) {
     }
 }
 
+if (!function_exists('documentQualitySyncBudget')) {
+    /**
+     * Wall-clock seconds the automatic checker may spend inside one request.
+     *
+     * A hosted deployment sits behind a proxy that stops a request after about
+     * 30 seconds (Heroku answers HTTP 503), while one OCR pass can take longer
+     * than that on its own. When the budget runs out the documents that were
+     * not analysed yet are accepted as "unavailable" for manual review rather
+     * than letting the proxy kill the whole registration.
+     *
+     * LMS_DOCUMENT_SYNC_BUDGET overrides the value. Without it the cap only
+     * applies on Heroku (where the DYNO variable is set); local runs keep the
+     * full OCR budget so the checker can finish its work.
+     */
+    function documentQualitySyncBudget(): int
+    {
+        $value = getenv('LMS_DOCUMENT_SYNC_BUDGET');
+        if ($value !== false && trim((string) $value) !== '') {
+            return max(0, (int) $value);
+        }
+        return getenv('DYNO') !== false ? 12 : 0;
+    }
+}
+
+if (!function_exists('documentQualitySyncDeadline')) {
+    /**
+     * Absolute microtime by which the in-request checker has to stop.
+     * 0.0 means "no limit". The deadline is per PHP request, so every
+     * requirement batch of one submission shares a single budget.
+     */
+    function documentQualitySyncDeadline(): float
+    {
+        static $deadline = null;
+        if ($deadline === null) {
+            $budget = documentQualitySyncBudget();
+            $deadline = $budget > 0 ? microtime(true) + $budget : 0.0;
+        }
+        return $deadline;
+    }
+}
+
 if (!function_exists('documentQualityBlocks')) {
     /**
      * True when the verdict must stop the registration.
@@ -496,6 +537,9 @@ if (!function_exists('documentCheckerSessionRun')) {
         $buffer = (string) ($state['buffer'] ?? '');
         $offset = (int) ($state['offset'] ?? 0);
         $deadline = microtime(true) + max(15, $timeout);
+        $syncDeadline = documentQualitySyncDeadline();
+        if ($syncDeadline > 0) $deadline = min($deadline, $syncDeadline);
+
         $timedOut = false;
         while (true) {
             $chunk = documentCheckerSessionRead(['output' => $state['output'], 'offset' => $offset]);
@@ -687,6 +731,9 @@ if (!function_exists('documentCheckerRunSingle')) {
         $budget = min((int) $config['timeout_max'],
             (int) $config['timeout_base'] + (int) $config['timeout_per_extra_document'] * max(0, count($realPaths) - 1));
         $deadline = microtime(true) + max(15, $budget);
+        $syncDeadline = documentQualitySyncDeadline();
+        if ($syncDeadline > 0) $deadline = min($deadline, $syncDeadline);
+
         $stdout = '';
         $stderr = '';
         $timedOut = false;
@@ -972,6 +1019,20 @@ if (!function_exists('checkDocumentQualityBatch')) {
             $cacheKeys[$key] = $cacheKey;
         }
         if ($paths) {
+            // Hosted proxies terminate a request after ~30 s (HTTP 503), and a
+            // request can carry several requirement batches. Once the shared
+            // budget is used up, stop starting checker processes: the untouched
+            // documents go to manual review instead of killing the submission.
+            $syncDeadline = documentQualitySyncDeadline();
+            if ($syncDeadline > 0 && microtime(true) >= $syncDeadline - 2.0) {
+                foreach (array_keys($paths) as $key) {
+                    $results[$key] = documentQualityResult('unavailable',
+                        'The automatic document check ran out of time on this server; the document was kept for manual review.');
+                }
+                $paths = [];
+            }
+        }
+        if ($paths) {
             foreach (runDocumentQualityChecker($paths, $expectations) as $key => $quality) {
                 $results[$key] = $quality;
                 if (in_array((string) $quality['status'], ['clear', 'flagged', 'blurry', 'unreadable', 'invalid'], true)) {
@@ -1059,7 +1120,7 @@ function checkDocumentBlur($filePath): bool
     return in_array($status, ['clear', 'flagged'], true);
 }
 
-function validatePlayerDocuments($filesArray, $playerNamesArray, array $documentTypes = []): array
+function validatePlayerDocuments($filesArray, $playerNamesArray, array $documentTypes = [], bool $uploadToCloud = true): array
 {
     $result = ['blurry'=>[], 'valid'=>[], 'quality'=>[], 'quality_details'=>[], 'quality_metrics'=>[],
                'issues'=>[], 'unavailable'=>[]];
@@ -1142,8 +1203,11 @@ function validatePlayerDocuments($filesArray, $playerNamesArray, array $document
             @unlink($file['path']); $reject($status, $quality['reason']); continue;
         }
         $storedName = $file['stored'];
-        // Upload to Cloudinary if enabled, otherwise keep local file
-        if (StorageService::isEnabled()) {
+        // Upload to Cloudinary if enabled, otherwise keep local file. Callers
+        // that answer the client before the (slow) cloud uploads — the team
+        // registration endpoint — pass false and publish the accepted files
+        // themselves once the response has been flushed.
+        if ($uploadToCloud && StorageService::isEnabled()) {
             try {
                 $cloudDoc = StorageService::upload($file['path'], 'player_documents', [
                     'public_id' => pathinfo($storedName, PATHINFO_FILENAME),

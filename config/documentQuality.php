@@ -14,6 +14,12 @@
  *   LMS_DOCUMENT_OCR_PAGES           max pages per document that get OCR'd
  *   LMS_DOCUMENT_SESSION             0 = start a new checker process per batch
  *                                        instead of one warm process per request
+ *   LMS_DOCUMENT_SYNC_BUDGET         seconds the checker may spend inside one
+ *                                        HTTP request (default: 12 on Heroku,
+ *                                        unlimited locally). Documents that are
+ *                                        not reached in time are accepted for
+ *                                        manual review instead of failing the
+ *                                        registration.
  */
 
 $env = static function (string $name, string $default): string {

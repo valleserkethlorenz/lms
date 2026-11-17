@@ -43,6 +43,69 @@ function cleanupRegistrationFiles(array $paths): void
     }
 }
 
+/**
+ * Flush the JSON response and, on PHP-FPM, let the browser go before the slow
+ * Cloudinary uploads run.
+ *
+ * Heroku (and most proxies) stop a request after about 30 seconds and answer
+ * 503. A registration carries a team image plus one document per player per
+ * requirement, and every Cloudinary upload is a separate HTTP call, so those
+ * uploads cannot sit on the critical path. PHP-FPM keeps the script running
+ * after fastcgi_finish_request(); Apache mod_php (local XAMPP) has no such
+ * split, which is fine because there is no proxy timeout there.
+ */
+function finishRegistrationResponse(array $payload): void
+{
+    echo json_encode($payload);
+
+    if (function_exists('fastcgi_finish_request')) {
+        ignore_user_abort(true);
+        fastcgi_finish_request();
+        @set_time_limit(120);
+        return;
+    }
+    if (function_exists('litespeed_finish_request')) {
+        ignore_user_abort(true);
+        litespeed_finish_request();
+        @set_time_limit(120);
+    }
+}
+
+/**
+ * Publish the accepted files to Cloudinary and point the committed rows at the
+ * secure URLs. Runs after the response; the local copy stays in place until
+ * the upload succeeds, so a failed cloud upload still leaves a reviewable file.
+ *
+ * @param array<int,array{local:string,folder:string,public_id:string,label:string,update:callable}> $uploads
+ */
+function runRegistrationCloudUploads(mysqli $conn, array $uploads): void
+{
+    if (!$uploads || !StorageService::isEnabled()) {
+        return;
+    }
+    foreach ($uploads as $upload) {
+        $local = (string) ($upload['local'] ?? '');
+        if ($local === '' || !is_file($local)) {
+            continue;
+        }
+        try {
+            $cloud = StorageService::upload($local, (string) $upload['folder'], [
+                'public_id' => (string) $upload['public_id'],
+            ]);
+            if (is_callable($upload['update'] ?? null)) {
+                ($upload['update'])($conn, (string) $cloud['secure_url']);
+            }
+            @unlink($local); // local copy is only needed until the cloud has it
+        } catch (Throwable $e) {
+            // Keep the local copy: the organizer can still review the document
+            // while this instance lives, and the row keeps the local name.
+            error_log('[REGISTER] Cloud upload failed after the response ('
+                . sanitizeForLog((string) ($upload['label'] ?? 'document')) . '): '
+                . sanitizeForLog($e->getMessage()), 0);
+        }
+    }
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     header('Content-Type: application/json');
 
@@ -63,6 +126,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     $uploadedFiles = [];
+    $deferredUploads = [];
     $transactionStarted = false;
     try {
         requireJsonRole([2]);
@@ -345,31 +409,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             throw new RegistrationValidationException('The team image must be a valid JPG, PNG, WebP, or GIF file.');
         }
 
-        if (StorageService::isEnabled()) {
-            $cloudTeamImg = StorageService::upload($teamImageTmp, 'team_images', [
-                'public_id' => time() . '_' . bin2hex(random_bytes(4)),
-            ]);
-            $imageName = $cloudTeamImg['secure_url'];
-            // Track it so a rolled-back registration also removes the cloud image.
-            $uploadedFiles[] = $imageName;
-        } else {
+        // Store the image locally first. When Cloudinary is enabled the upload
+        // is queued below and runs after the response has been flushed, so the
+        // cloud round-trip cannot push the request past the proxy timeout.
+        $uploadDir = realpath(__DIR__ . '/../assets/uploads/');
+        if (!$uploadDir) {
+            mkdir(__DIR__ . '/../assets/uploads/', 0755, true);
             $uploadDir = realpath(__DIR__ . '/../assets/uploads/');
-            if (!$uploadDir) {
-                mkdir(__DIR__ . '/../assets/uploads/', 0755, true);
-                $uploadDir = realpath(__DIR__ . '/../assets/uploads/');
-            }
-            $imageName = time().'_'.bin2hex(random_bytes(4)).'.'.$imgExt;
-            $targetFile = $uploadDir.DIRECTORY_SEPARATOR.$imageName;
-            if (!move_uploaded_file($teamImageTmp, $targetFile)) {
-                throw new RuntimeException('Failed to store the team image.');
-            }
-            @chmod($targetFile, 0644);
-            $uploadedFiles[] = $targetFile;
         }
+        $imageName = time().'_'.bin2hex(random_bytes(4)).'.'.$imgExt;
+        $targetFile = $uploadDir.DIRECTORY_SEPARATOR.$imageName;
+        if (!move_uploaded_file($teamImageTmp, $targetFile)) {
+            throw new RuntimeException('Failed to store the team image.');
+        }
+        @chmod($targetFile, 0644);
+        $uploadedFiles[] = $targetFile;
+        $teamImageLocalPath = $targetFile;
 
         $typedUploads=[]; $legacyPlayerDocs=[]; $preliminaryDocumentFlags=[]; $documentFieldErrors=[];
-        // Typed requirements accept the stored value as-is: a Cloudinary secure
-        // URL when cloud storage is enabled, otherwise a local file name.
+        // Accepted documents stay in protected local storage during validation;
+        // when Cloudinary is enabled their upload is queued for after the
+        // response (see $deferredUploads / runRegistrationCloudUploads()).
         if ($leagueDocumentRequirements) {
             foreach ($leagueDocumentRequirements as $requirement) {
                 $reqId=(int)$requirement['id'];
@@ -379,7 +439,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     if ($name==='') continue;
                     $tmp=$_FILES['team_documents']['tmp_name'][$reqId] ?? ''; $mime=(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
                     $files=['name'=>[$name],'tmp_name'=>[$tmp],'error'=>[$_FILES['team_documents']['error'][$reqId]],'size'=>[$_FILES['team_documents']['size'][$reqId]]];
-                    $checked=validatePlayerDocuments($files,[$requirement['name']],[$requirement['name']]);
+                    $checked=validatePlayerDocuments($files,[$requirement['name']],[$requirement['name']],false);
                     if (empty($checked['valid'][0])) {
                         $issue=$checked['issues'][0] ?? [];
                         $documentFieldErrors[]=['scope'=>'team','requirement_id'=>$reqId,'name'=>'team_documents['.$reqId.']','index'=>0,'message'=>documentQualityMessage($issue)];
@@ -395,7 +455,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     foreach ($playerNames as $i=>$playerName) if ($requirement['is_required'] && empty($names[$i])) throw new RegistrationValidationException($requirement['name'].' is required for player '.($i+1).' ('.$playerName.').');
                     $files=['name'=>$names,'tmp_name'=>$_FILES['player_documents']['tmp_name'][$reqId] ?? [],'error'=>$_FILES['player_documents']['error'][$reqId] ?? [],'size'=>$_FILES['player_documents']['size'][$reqId] ?? []];
                     $mimes=[]; foreach(($files['tmp_name'] ?? []) as $i=>$tmp) if($tmp) $mimes[$i]=(new finfo(FILEINFO_MIME_TYPE))->file($tmp);
-                    $checked=validatePlayerDocuments($files,$playerNames,array_fill_keys(array_keys($names),$requirement['name']));
+                    $checked=validatePlayerDocuments($files,$playerNames,array_fill_keys(array_keys($names),$requirement['name']),false);
                     foreach($checked['valid'] as $storedName) $uploadedFiles[]=$storedName;
                     foreach ($playerNames as $i=>$playerName) {
                         if (!empty($names[$i]) && empty($checked['valid'][$i])) {
@@ -421,7 +481,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Compatibility for leagues created before typed requirements existed.
             $docNames = $_FILES['player_document']['name'] ?? [];
             foreach ($playerNames as $i => $name) if (empty($docNames[$i])) throw new RegistrationValidationException('Player '.($i+1).' is missing an eligibility document.');
-            $validation = validatePlayerDocuments($_FILES['player_document'] ?? [], $playerNames);
+            $validation = validatePlayerDocuments($_FILES['player_document'] ?? [], $playerNames, [], false);
             foreach($validation['valid'] as $storedName) $uploadedFiles[]=$storedName;
             if (!empty($validation['blurry'])) {
                 foreach($validation['issues'] as $failedIndex=>$issue) {
@@ -484,6 +544,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         error_log("[REGISTER] Team inserted successfully with ID: " . intval($team_id), 0);
 
+        // Queue the team image for Cloudinary once the team id exists (the row
+        // keeps the local file name if the upload fails).
+        if (StorageService::isEnabled() && !empty($teamImageLocalPath)) {
+            $deferredUploads[] = [
+                'local'     => $teamImageLocalPath,
+                'folder'    => 'team_images',
+                'public_id' => pathinfo($imageName, PATHINFO_FILENAME),
+                'label'     => 'team image',
+                'update'    => static function (mysqli $conn, string $url) use ($team_id): void {
+                    $update = $conn->prepare("UPDATE tbl_team SET team_image=? WHERE id=?");
+                    if ($update) {
+                        $update->bind_param('si', $url, $team_id);
+                        $update->execute();
+                        $update->close();
+                    }
+                },
+            ];
+        }
+
         // INSERT PLAYERS
         $stmt2 = $conn->prepare("INSERT INTO tbl_player (team_id, name, age, birthdate, role, gender, jersey_number, document, barangay) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         if (!$stmt2) {
@@ -515,6 +594,32 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         $stmt2->close();
 
+        // Leagues created before typed requirements keep one document per
+        // player on tbl_player.document; queue that upload as well.
+        if (!$leagueDocumentRequirements && !empty($validation['valid'])) {
+            foreach ($validation['valid'] as $playerIndex => $storedName) {
+                if (!StorageService::isEnabled() || trim((string) $storedName) === '') continue;
+                $playerId = (int) ($playerIds[$playerIndex] ?? 0);
+                if ($playerId <= 0) continue;
+                $localPath = documentStoredPath((string) $storedName, false);
+                if ($localPath === null) continue;
+                $deferredUploads[] = [
+                    'local'     => $localPath,
+                    'folder'    => 'player_documents',
+                    'public_id' => pathinfo((string) $storedName, PATHINFO_FILENAME),
+                    'label'     => 'player document (player #' . $playerId . ')',
+                    'update'    => static function (mysqli $conn, string $url) use ($playerId): void {
+                        $update = $conn->prepare("UPDATE tbl_player SET document=? WHERE id=?");
+                        if ($update) {
+                            $update->bind_param('si', $url, $playerId);
+                            $update->execute();
+                            $update->close();
+                        }
+                    },
+                ];
+            }
+        }
+
         if ($typedUploads) {
             $docInsert=$conn->prepare("INSERT INTO tbl_submitted_document(team_id,player_id,requirement_id,stored_name,original_name,mime_type,quality_status,quality_metrics,review_status) VALUES (?,?,?,?,?,?,?,?,?)");
             foreach($typedUploads as $upload) {
@@ -523,6 +628,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $docReviewStatus = 'Pending';
                 $docInsert->bind_param('iiissssss',$team_id,$playerId,$upload['requirement_id'],$upload['stored'],$upload['original'],$upload['mime'],$upload['quality'],$metricsJson,$docReviewStatus);
                 if(!$docInsert->execute()) throw new Exception('Failed to store typed document metadata.');
+                $submittedDocumentId = (int) $docInsert->insert_id;
+
+                // Queue the accepted file for the post-response cloud upload.
+                if (StorageService::isEnabled()) {
+                    $localPath = documentStoredPath((string) $upload['stored'], false);
+                    if ($localPath !== null) {
+                        $playerIndex = $upload['player_index'];
+                        $mirrorPlayerId = $playerIndex === null ? 0 : (int) ($playerIds[$playerIndex] ?? 0);
+                        // tbl_player.document mirrors the first document of each
+                        // player, so that row must follow the same cloud URL.
+                        $mirrorThisDocument = $mirrorPlayerId > 0
+                            && (string) ($legacyPlayerDocs[$playerIndex] ?? '') === (string) $upload['stored'];
+                        $deferredUploads[] = [
+                            'local'     => $localPath,
+                            'folder'    => 'player_documents',
+                            'public_id' => pathinfo((string) $upload['stored'], PATHINFO_FILENAME),
+                            'label'     => 'document #' . $submittedDocumentId,
+                            'update'    => static function (mysqli $conn, string $url) use ($submittedDocumentId, $mirrorPlayerId, $mirrorThisDocument): void {
+                                $docUpdate = $conn->prepare("UPDATE tbl_submitted_document SET stored_name=? WHERE id=?");
+                                if ($docUpdate) {
+                                    $docUpdate->bind_param('si', $url, $submittedDocumentId);
+                                    $docUpdate->execute();
+                                    $docUpdate->close();
+                                }
+                                if ($mirrorThisDocument && $mirrorPlayerId > 0) {
+                                    $playerUpdate = $conn->prepare("UPDATE tbl_player SET document=? WHERE id=?");
+                                    if ($playerUpdate) {
+                                        $playerUpdate->bind_param('si', $url, $mirrorPlayerId);
+                                        $playerUpdate->execute();
+                                        $playerUpdate->close();
+                                    }
+                                }
+                            },
+                        ];
+                    }
+                }
             }
             $docInsert->close();
         }
@@ -540,9 +681,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $transactionStarted = false;
         $uploadedFiles = [];
 
-        $conn->close();
+        // Answer first: the registration is committed and the accepted files
+        // live in protected local storage, so the Cloudinary uploads can run
+        // after the browser has its response. This keeps the request inside the
+        // ~30 s proxy window even for a full roster with several documents.
+        $pendingCloudUploads = $deferredUploads;
+        finishRegistrationResponse(["status" => 201, "msg" => "Team and players registered successfully"]);
+        runRegistrationCloudUploads($conn, $pendingCloudUploads);
 
-        echo json_encode(["status" => 201, "msg" => "Team and players registered successfully"]);
+        $conn->close();
         exit;
 
     } catch (RegistrationValidationException $e) {

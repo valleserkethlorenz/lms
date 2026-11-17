@@ -98,19 +98,24 @@ function showFileSelectionFeedback(input) {
    far smaller (Heroku terminates uploads at ~30 s and its PHP post_max_size is
    8 MB by default), which is why those submissions died with a bare
    "Failed to fetch". Downscaling the picture in the browser fixes the cause:
-   ~4 MB becomes ~0.5 MB and a document photo stays perfectly legible.
+   ~4 MB becomes ~0.3 MB and a document photo stays perfectly legible.
 
    Everything degrades to "send the original" if the browser cannot decode the
    image, so a PDF or an exotic format is never blocked here.
    ------------------------------------------------------------------------- */
-const REG_IMAGE_OPTIMISE_BYTES = 900 * 1024;   // leave already-small files alone
-const REG_IMAGE_MAX_EDGE = 2000;               // px on the long edge
-const REG_IMAGE_QUALITY = 0.85;
+const REG_IMAGE_OPTIMISE_BYTES = 350 * 1024;   // leave already-small files alone
+const REG_IMAGE_MAX_EDGE = 1600;               // px on the long edge
+const REG_IMAGE_QUALITY = 0.8;
 
 function isOptimisableImage(file) {
     if (!file) return false;
     const type = String(file.type || '').toLowerCase();
-    return type === 'image/jpeg' || type === 'image/jpg' || type === 'image/png' || type === 'image/webp';
+    if (type) {
+        return type === 'image/jpeg' || type === 'image/jpg' || type === 'image/png' || type === 'image/webp';
+    }
+    // Some mobile pickers and draft-restored blobs carry no MIME type; fall back
+    // to the extension so those photos are still downscaled before upload.
+    return /\.(jpe?g|png|webp)$/i.test(String(file.name || ''));
 }
 
 /** Resolves with a smaller JPEG copy, or null when the original should be used. */
@@ -1283,9 +1288,18 @@ if (regForm) {
                 }
             }
             if (!data || typeof data !== 'object') {
-                const message = response.status === 413
-                    ? 'The uploaded files are too large for the server. Reduce the file sizes and try again.'
-                    : `The server returned an unexpected response (HTTP ${response.status}). Please try again.`;
+                let message;
+                if (response.status === 413) {
+                    message = 'The uploaded files are too large for the server. Reduce the file sizes and try again.';
+                } else if (response.status === 503 || response.status === 504) {
+                    // The hosted proxy stopped the request (Heroku returns 503
+                    // after ~30 s, usually while a large upload is still being
+                    // received). The draft on this device is intact.
+                    message = 'The server took too long to accept the upload and stopped the request (HTTP ' + response.status + '). '
+                        + 'Your draft is saved on this device. Check your connection and try again — smaller photos and fewer documents upload faster.';
+                } else {
+                    message = `The server returned an unexpected response (HTTP ${response.status}). Please try again.`;
+                }
                 throw new Error(message);
             }
             if (!response.ok && !data.msg) {

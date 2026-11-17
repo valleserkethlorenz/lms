@@ -122,6 +122,28 @@ class DocumentValidatorTest extends TestCase
         $this->assertContains('invalid', $config['blocking_statuses']);
     }
 
+    public function testDocumentQualitySyncBudgetHonorsEnvironmentOverride(): void
+    {
+        $previous = getenv('LMS_DOCUMENT_SYNC_BUDGET');
+        try {
+            putenv('LMS_DOCUMENT_SYNC_BUDGET=9');
+            $this->assertSame(9, documentQualitySyncBudget());
+
+            // 0 disables the cap entirely (the local/XAMPP default).
+            putenv('LMS_DOCUMENT_SYNC_BUDGET=0');
+            $this->assertSame(0, documentQualitySyncBudget());
+
+            putenv('LMS_DOCUMENT_SYNC_BUDGET=not-a-number');
+            $this->assertSame(0, documentQualitySyncBudget());
+        } finally {
+            if ($previous === false) {
+                putenv('LMS_DOCUMENT_SYNC_BUDGET');
+            } else {
+                putenv('LMS_DOCUMENT_SYNC_BUDGET=' . $previous);
+            }
+        }
+    }
+
     public function testDocumentQualityBlocksRejectsUnreadableAndBlurry(): void
     {
         $this->assertTrue(documentQualityBlocks('blurry'));
