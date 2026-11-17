@@ -71,8 +71,8 @@ function leagueStructurePresets(): array {
         ],
         'swiss_system' => [
             // One table, a fixed number of rounds. The default is editable in
-            // the Setup wizard; when it is left empty the engine derives it from
-            // the team count (ceil(log2(n)), minimum 3).
+            // the Setup wizard; the engine derives it from the team count
+            // (ceil(log2(n)), minimum 3) only when a stage has no planned rounds.
             'stages' => [
                 ['name' => 'Swiss Stage', 'type' => 'group', 'format' => 'swiss', 'groups' => ['Swiss Table'], 'rounds' => 5],
             ],
@@ -344,9 +344,10 @@ function updateStagePlannedRounds(mysqli $conn, int $stageId, int $rounds): bool
  * exist, for the same reason the preset itself is locked then.
  *
  * @param array<int,array<string,int>> $settings
- * @return int number of stage values written
+ * @return int number of preset settings handled (group counts are rebuilt by the caller)
  */
 function updateLeagueStructureSettings(mysqli $conn, int $leagueId, string $structureKey, array $settings): int {
+    $structureKey = trim($structureKey);
     $settings = array_replace_recursive(leagueStructureDefaultSettings($structureKey), $settings);
     $stages = getLeagueStages($conn, $leagueId);
     $written = 0;
@@ -356,11 +357,17 @@ function updateLeagueStructureSettings(mysqli $conn, int $leagueId, string $stru
         if (!$stage) continue;
 
         $stageId = (int)$stage['id'];
+
+        /* Group count is structural: the caller rebuilds the stage groups. It
+           still counts as handled so a preset whose only knob is the group
+           count does not look like a failed save. */
+        if ($field['field'] === 'groups') {
+            $written++;
+            continue;
+        }
+
         $value = (int)($settings[$field['stage']][$field['field']] ?? $field['default']);
         $value = max((int)$field['min'], min((int)$field['max'], $value));
-
-        /* Group count is structural: it rebuilds the stage groups instead. */
-        if ($field['field'] === 'groups') continue;
 
         if ($field['field'] === 'qualifiers') {
             $stmt = $conn->prepare("UPDATE tbl_league_stage SET qualifiers_per_group = ? WHERE id = ? AND league_id = ?");
@@ -379,18 +386,35 @@ function updateLeagueStructureSettings(mysqli $conn, int $leagueId, string $stru
 }
 
 /**
+ * Stage definitions of a stage-based preset.
+ *
+ * @return array<int,array<string,mixed>>|null null for unknown keys, "custom"
+ *         and any preset that declares no stages.
+ */
+function leagueStructurePresetStages(string $structureKey): ?array
+{
+    $presets = leagueStructurePresets();
+    $stages  = $presets[$structureKey]['stages'] ?? null;
+    return is_array($stages) && $stages !== [] ? $stages : null;
+}
+
+/**
  * Create the stage/group skeleton of a structure preset. Runs inside the league
  * creation transaction, so a failure rolls the whole league back.
  *
+ * Unknown or empty presets (including custom) are refused instead of silently
+ * building a different format. The posted settings go through the same schema
+ * clamp as the Setup wizard.
+ *
  * @param array<int,array<string,int>> $settings editable values from the Format step
- * @return int number of stages created (0 for presets without stages)
+ * @return int number of stages created (0 for unknown/custom presets)
  */
 function applyLeagueStructureTemplate(mysqli $conn, int $leagueId, string $structure, array $settings = []): int {
-    $presets = leagueStructurePresets();
-    $preset  = $presets[$structure] ?? $presets['round_robin'];
-    if (empty($preset['stages'])) return 0;
+    $structure = trim($structure);
+    $presetStages = leagueStructurePresetStages($structure);
+    if ($presetStages === null) return 0;
 
-    $settings = array_replace_recursive(leagueStructureDefaultSettings($structure), $settings);
+    $settings = leagueStructureSanitizeSettings($structure, $settings);
 
     // Stage tables come from database/migrations/034_anp2026_stages_and_rules.sql. Skip the
     // template (never fail league creation) when a deployment has not run it yet.
@@ -401,7 +425,7 @@ function applyLeagueStructureTemplate(mysqli $conn, int $leagueId, string $struc
 
     $createdStages = 0;
     $previousGroupIds = [];
-    foreach ($preset['stages'] as $stageIndex => $stageDef) {
+    foreach ($presetStages as $stageIndex => $stageDef) {
         $stageSettings = $settings[$stageIndex] ?? [];
         $qualifiers = isset($stageSettings['qualifiers'])
             ? (int)$stageSettings['qualifiers']
@@ -428,7 +452,7 @@ function applyLeagueStructureTemplate(mysqli $conn, int $leagueId, string $struc
         $currentGroupIds = [];
         $stageGroups = $stageDef['groups'] ?? [];
         if ($stageGroups && isset($stageSettings['groups'])) {
-            $groupCount = max(1, min(8, (int)$stageSettings['groups']));
+            $groupCount = max(1, (int)$stageSettings['groups']);
             $stageGroups = defaultStageGroupNames($groupCount, (string)$stageDef['type']);
         }
         foreach ($stageGroups as $groupIndex => $groupName) {
@@ -462,6 +486,27 @@ function applyLeagueStructureTemplate(mysqli $conn, int $leagueId, string $struc
 }
 
 /**
+ * Format-defining stages of a skeleton.
+ *
+ * Placement stages (Battle for Third and similar bronze matches) are created
+ * by the bracket engine after the format has been chosen; they never change
+ * which preset produced the skeleton, so detection ignores them.
+ *
+ * @param array<int,array<string,mixed>> $stages rows shaped like getLeagueStages()
+ * @return array<int,array<string,mixed>>
+ */
+function leagueStructureFormatStages(array $stages): array
+{
+    $formatStages = [];
+    foreach ($stages as $stage) {
+        $type = (string)($stage['stage_type'] ?? $stage['type'] ?? '');
+        if ($type === 'placement') continue;
+        $formatStages[] = $stage;
+    }
+    return $formatStages;
+}
+
+/**
  * Shape of a stage skeleton: "<type>:<groupCount>:<format>|…".
  *
  * Only the layout the presets define is compared, so renamed stages or edited
@@ -473,7 +518,7 @@ function applyLeagueStructureTemplate(mysqli $conn, int $leagueId, string $struc
  */
 function leagueStructureSignature(array $stages): string {
     $parts = [];
-    foreach ($stages as $stage) {
+    foreach (leagueStructureFormatStages($stages) as $stage) {
         $type = (string)($stage['stage_type'] ?? $stage['type'] ?? '');
         // The format separates structures that share a stage type — a single
         // and a double elimination stage are both "knockout", and a Swiss stage
@@ -502,7 +547,12 @@ function leagueStructureSignature(array $stages): string {
  *         hand and no longer matches a preset.
  */
 function detectLeagueStructure(array $stages): ?string {
-    $signature = leagueStructureSignature($stages);
+    /* Placement stages are engine-generated bronze matches; they do not
+       change the format, so they are ignored for detection. */
+    $formatStages = leagueStructureFormatStages($stages);
+    if ($stages !== [] && $formatStages === []) return null;
+
+    $signature = leagueStructureSignature($formatStages);
     foreach (leagueStructurePresets() as $key => $preset) {
         $presetStages = [];
         foreach (($preset['stages'] ?? []) as $stage) {
@@ -516,28 +566,30 @@ function detectLeagueStructure(array $stages): ?string {
     }
 
     /* Dynamic Groups → knockout: the preset supports 2-8 groups, so the exact
-       signature only matches the two-group default. Recognise any group count
-       in that range followed by one single-elimination knockout (optionally a
-       trailing placement stage). */
-    $rows = array_values($stages);
-    if (count($rows) >= 2) {
+       signature only matches the two-group default. Recognise any round-robin
+       group count in that range followed by exactly one single-elimination
+       knockout, ignoring engine-generated placement stages. */
+    $rows = array_values($formatStages);
+    if (count($rows) === 2) {
         $first  = $rows[0];
         $second = $rows[1];
-        $firstType   = (string)($first['stage_type'] ?? '');
+        $firstType   = (string)($first['stage_type'] ?? $first['type'] ?? '');
         $firstGroups = count($first['groups'] ?? []);
-        $secondType  = (string)($second['stage_type'] ?? '');
-        $secondFormat = $secondType === 'knockout' ? stageFormat($second) : '';
-
-        $trailingOk = true;
-        foreach (array_slice($rows, 2) as $later) {
-            if ((string)($later['stage_type'] ?? '') !== 'placement') { $trailingOk = false; break; }
-        }
+        $secondType  = (string)($second['stage_type'] ?? $second['type'] ?? '');
+        $firstFormat = stageFormat([
+            'stage_type'   => $firstType,
+            'stage_format' => (string)($first['stage_format'] ?? $first['format'] ?? ''),
+        ]);
+        $secondFormat = $secondType === 'knockout' ? stageFormat([
+            'stage_type'   => $secondType,
+            'stage_format' => (string)($second['stage_format'] ?? $second['format'] ?? ''),
+        ]) : '';
 
         if ($firstType === 'group'
+            && $firstFormat === 'round_robin'
             && $firstGroups >= 2 && $firstGroups <= 8
             && $secondType === 'knockout'
-            && $secondFormat === 'single_elimination'
-            && $trailingOk) {
+            && $secondFormat === 'single_elimination') {
             return 'groups_knockout';
         }
     }
@@ -567,44 +619,80 @@ function addPlayoffsStageToRoundRobin(mysqli $conn, int $leagueId): int {
 /**
  * Guard for applying or changing a league's structure preset.
  *
- * The skeleton can be applied or replaced at any time **before the first match
- * exists**: replacing deletes the league's stages (and, by cascade, their groups,
- * pool sources and team placements) and builds the new skeleton. Once matches
+ * The skeleton can be applied or replaced at any time **before the first active
+ * match exists**: replacing deletes the league's stages (and, by cascade, their groups,
+ * pool sources and team placements) and builds the new skeleton. Once active matches
  * exist the guard refuses, because `tbl_schedule.stage_id` has no foreign key and
  * old matches would silently fall out of every stage table.
  *
  * @return string|null user-facing error message, or null when it may be applied.
  */
 function structurePresetApplyError(string $structureKey, int $matchCount): ?string {
-    $presets = leagueStructurePresets();
-    if ($structureKey === '' || !array_key_exists($structureKey, $presets)) {
-        return 'Choose one of the built-in competition structures.';
-    }
+    $structureKey = trim($structureKey);
     if ($structureKey === 'custom') {
         return 'A custom structure has no stages to create. Choose one of the built-in presets.';
     }
+    if (leagueStructurePresetStages($structureKey) === null) {
+        return 'Choose one of the built-in competition structures.';
+    }
     if ($matchCount > 0) {
-        return 'This league already has matches, so the structure can no longer be replaced. Delete those matches on the Schedule page first, or use Discard setup & start over on Setup.';
+        return 'This league already has matches, so the structure can no longer be replaced. Archive or delete them on the Schedule page first, or use Discard setup & start over on Setup.';
     }
     return null;
+}
+
+/**
+ * Clear every team's progression status in a league.
+ *
+ * A new or rebuilt skeleton starts a new competition: a team marked Eliminated
+ * (or Qualified) by the previous structure must be drawable and publishable
+ * again. Runs inside the caller's transaction.
+ */
+function resetLeagueProgression(mysqli $conn, int $leagueId): void
+{
+    $columns = @$conn->query("SHOW COLUMNS FROM tbl_team
+                              WHERE Field IN ('progression_status','progression_decided_by','progression_decided_at')");
+    if (!$columns) return;
+    $hasColumns = $columns->num_rows === 3;
+    $columns->free();
+    if (!$hasColumns) return;
+
+    $stmt = $conn->prepare("UPDATE tbl_team
+                               SET progression_status = 'Undecided',
+                                   progression_decided_by = NULL,
+                                   progression_decided_at = NULL
+                             WHERE league_id = ?");
+    if (!$stmt) return;
+    $stmt->bind_param('i', $leagueId);
+    $stmt->execute();
+    $stmt->close();
 }
 
 /**
  * Replace a league's stage skeleton with a preset.
  *
  * Deleting the stages cascades to stage groups, pool sources and team placements
- * (see database/migrations/034_anp2026_stages_and_rules.sql). Call this inside a
- * transaction, and only after structurePresetApplyError() returned null.
+ * (see database/migrations/034_anp2026_stages_and_rules.sql). Team progression
+ * statuses are reset as well: the new skeleton starts a new competition, so a
+ * team eliminated in the previous structure must be drawable again. Call this
+ * inside a transaction, and only after structurePresetApplyError() returned null.
  *
  * @param array<int,array<string,int>> $settings editable values from the Format step
  * @return int number of stages created by the new preset
  */
 function replaceLeagueStructure(mysqli $conn, int $leagueId, string $structureKey, array $settings = []): int {
+    $structureKey = trim($structureKey);
+
+    /* Never delete the skeleton for a key that cannot rebuild it. */
+    if (leagueStructurePresetStages($structureKey) === null) return 0;
+
     $stmt = $conn->prepare("DELETE FROM tbl_league_stage WHERE league_id = ?");
     if ($stmt) {
         $stmt->bind_param('i', $leagueId);
         $stmt->execute();
         $stmt->close();
     }
-    return applyLeagueStructureTemplate($conn, $leagueId, $structureKey, $settings);
+    $createdStages = applyLeagueStructureTemplate($conn, $leagueId, $structureKey, $settings);
+    if ($createdStages > 0) resetLeagueProgression($conn, $leagueId);
+    return $createdStages;
 }

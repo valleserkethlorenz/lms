@@ -288,7 +288,7 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
                 </span>
             </div>
             <?php if (!$wizardCan('choose_structure')): ?>
-                <p class="lsp-help">The format is locked because matches already exist.</p>
+                <p class="lsp-help">The format is locked because active matches exist.</p>
             <?php else: ?>
                 <details class="lsp-disclosure">
                     <summary>Change format or stage settings</summary>
@@ -303,9 +303,9 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
                   data-current-key="<?= htmlspecialchars((string) ($setupStructureKey ?? ''), ENT_QUOTES) ?>"
                   data-has-stages="<?= $stages ? '1' : '0' ?>"
                   data-current-groups="<?= (int) $wizardCurrentGroupCount ?>"
-                  data-replace-confirm="Replace the current stages? Teams are kept; group placements will be reset."
-                  data-group-rebuild-confirm="Changing the number of groups rebuilds the group stage and re-draws the approved teams. Continue?"
-                  data-extend-confirm="Add the Playoffs stage? Your League Stage, teams and team placements are kept.">
+                  data-replace-confirm="Replace the current stages? Teams are kept; group placements and team progression will be reset."
+                  data-group-rebuild-confirm="Changing the number of groups rebuilds the group stage and re-draws the approved teams. Team progression will also be reset. Continue?"
+                  data-extend-confirm="Add the Playoffs stage? Your League Stage, teams and team placements are kept. Team progression will be reset.">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
                 <input type="hidden" name="league_id" value="<?= (int) $id ?>">
                 <input type="hidden" name="applyStructure" value="1">
@@ -340,7 +340,7 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
                          data-format-settings="<?= htmlspecialchars($wizardSettingsKey, ENT_QUOTES) ?>">
                         <div class="lsp-format-settings-head">
                             <b>Format settings</b>
-                            <small>Stored on the stages; you can change them until matches exist.</small>
+                            <small>Stored on the stages; you can change them until active matches exist.</small>
                         </div>
                         <?php foreach ($wizardSettingsFields as $wizardSettingsField):
                             $wizardFieldStage = (int) $wizardSettingsField['stage'];

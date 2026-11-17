@@ -35,7 +35,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                (cascading to their groups, pool sources and team placements) and
                builds the new skeleton. Adding playoffs to a plain round robin is
                additive and keeps its placements. */
-            $structureKey=(string)($_POST['structure_key'] ?? '');
+            $structureKey=trim((string)($_POST['structure_key'] ?? ''));
             /* Editable preset settings from the Format step (top N per group /
                pool, Swiss rounds). Only the selected card's inputs are enabled,
                so these values always belong to $structureKey. */
@@ -68,11 +68,11 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                    rebuilds the skeleton and re-draws the approved teams. */
                 if($structureKey!=='' && $postedStructureSettings!==null){
                     $settingsMatchCount=0;
-                    if($settingsMatchStmt=$conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule WHERE league_id=?")){
+                    if($settingsMatchStmt=$conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule WHERE league_id=? AND (is_archived=0 OR is_archived IS NULL)")){
                         $settingsMatchStmt->bind_param('i',$id); $settingsMatchStmt->execute();
                         $settingsMatchCount=(int)($settingsMatchStmt->get_result()->fetch_assoc()['c'] ?? 0); $settingsMatchStmt->close();
                     }
-                    if($settingsMatchCount>0) throw new RuntimeException('Stage settings are locked once matches exist.');
+                    if($settingsMatchCount>0) throw new RuntimeException('Stage settings are locked while active matches exist.');
 
                     $groupCountChanged=false;
                     $currentGroupCount=0;
@@ -97,6 +97,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                         } else {
                             $savedSettings=updateLeagueStructureSettings($conn,$id,$structureKey,$structureSettings);
                             if($savedSettings<1) throw new RuntimeException('The stage settings could not be saved.');
+                            resetLeagueProgression($conn,$id);
                         }
                         $conn->commit();
                     } catch(Throwable $settingsFailure){
@@ -106,10 +107,10 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 
                     if($groupCountChanged){
                         auditLog($conn,'Rebuild League Groups',"Changed the groups_knockout layout from $currentGroupCount to $newGroupCount group/s and re-drew $redrawnTeams approved team/s (league ID $id)");
-                        $_SESSION['setup_flash']=['info','Group layout changed to '.$newGroupCount.' groups. '.($redrawnTeams>0?$redrawnTeams.' approved team/s were re-drawn automatically.':'No approved teams to re-draw yet.').' No matches existed, so nothing else was affected.'];
+                        $_SESSION['setup_flash']=['info','Group layout changed to '.$newGroupCount.' groups. '.($redrawnTeams>0?$redrawnTeams.' approved team/s were re-drawn automatically.':'No approved teams to re-draw yet.').' No active matches existed, so no match history was affected. Team progression was reset.'];
                     } else {
                         auditLog($conn,'Update League Structure Settings',"Updated $savedSettings preset setting/s for the $structureKey structure (league ID $id)");
-                        $_SESSION['setup_flash']=['success','Stage settings saved. The existing stages and team placements were kept.'];
+                        $_SESSION['setup_flash']=['success','Stage settings saved. The existing stages and team placements were kept. Team progression was reset.'];
                     }
                 }
                 $existingNextStep='matches';
@@ -127,7 +128,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             }
 
             $existingMatchCount=0;
-            if($structureMatchStmt=$conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule WHERE league_id=?")){
+            if($structureMatchStmt=$conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule WHERE league_id=? AND (is_archived=0 OR is_archived IS NULL)")){
                 $structureMatchStmt->bind_param('i',$id); $structureMatchStmt->execute();
                 $existingMatchCount=(int)($structureMatchStmt->get_result()->fetch_assoc()['c'] ?? 0); $structureMatchStmt->close();
             }
@@ -158,6 +159,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     $addedPlayoffsStageId=addPlayoffsStageToRoundRobin($conn,$id);
                     if($addedPlayoffsStageId<1) throw new RuntimeException('Could not add the Playoffs stage to this round robin.');
                     updateLeagueStructureSettings($conn,$id,$structureKey,$structureSettings);
+                    resetLeagueProgression($conn,$id);
                     $createdStructureStages=1;
                     $structureExtended=true;
                 } else {
@@ -171,7 +173,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             }
             if($structureExtended){
                 auditLog($conn,'Extend League Structure',"Added the Playoffs stage to the round-robin structure for league ID $id; existing stages and team placements kept");
-                $_SESSION['setup_flash']=['success','Playoffs stage added — your League Stage, teams and team placements were kept. Generate the round robin; the configured top N advance automatically.'];
+                $_SESSION['setup_flash']=['success','Playoffs stage added — your League Stage, teams and team placements were kept. Team progression was reset. Generate the round robin; the configured top N advance automatically.'];
             } else {
                 $structureAction=$existingStageCount>0?'Changed':'Applied';
                 $createdStagesText=$createdStructureStages.' '.($createdStructureStages===1?'stage':'stages');
@@ -183,8 +185,16 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                     if($existingPlacedCount>0) $removedSummary[]=$existingPlacedCount.' team '.($existingPlacedCount===1?'placement':'placements');
                     $flashMessage.=' Removed the old skeleton ('.implode(', ',$removedSummary).'); team records and matches are untouched.';
                     if($existingPlacedCount>0) $flashMessage.=' Group placements were reset.';
+                    $flashMessage.=' Team progression was reset.';
                 }
-                $flashMessage.=' Continue with Teams, then generate the matches.';
+                $flashStructureStages=leagueStructurePresetStages($structureKey) ?? [];
+                $flashStructureHasGroups=false;
+                foreach($flashStructureStages as $flashStructureStage){
+                    if(!empty($flashStructureStage['groups'])){ $flashStructureHasGroups=true; break; }
+                }
+                $flashMessage.=$flashStructureHasGroups
+                    ? ' Continue with Teams, then generate the matches.'
+                    : ' Continue with the Matches step.';
                 $_SESSION['setup_flash']=[$existingStageCount>0?'info':'success',$flashMessage];
             }
         } elseif(isset($_POST['addStageWithGroups'])){
@@ -615,7 +625,7 @@ foreach($stages as $progressStage){
 $stageAssignedTeamCount=count($stageAssignedTeamIds);
 $approvedTeamCount=count($stageTeamNames);
 $matchCount=0;
-if($matchStmt=$conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule WHERE league_id=?")){
+if($matchStmt=$conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule WHERE league_id=? AND (is_archived=0 OR is_archived IS NULL)")){
     $matchStmt->bind_param('i',$id); $matchStmt->execute();
     $matchCount=(int)($matchStmt->get_result()->fetch_assoc()['c'] ?? 0); $matchStmt->close();
 }

@@ -60,8 +60,10 @@ $setupCan = static function (string $capability) use ($setupCapabilities): bool 
 
 $setupStructureShort = [
     'round_robin'          => 'Round robin',
+    'swiss_system'         => 'Swiss system',
     'round_robin_playoffs' => 'Round robin + playoffs',
     'single_elimination'   => 'Single elimination',
+    'double_elimination'   => 'Double elimination',
     'groups_knockout'      => 'Groups → knockout',
     'pools_playoffs'       => 'Pools → crossover → playoffs',
     'custom'               => 'Custom',
@@ -77,8 +79,10 @@ $setupStructureShortLabel = $stageCount === 0
    skipped altogether. */
 $setupNextStepByStructure = [
     'round_robin'          => 'Generate the round robin on the <em>Schedule</em> page — <em>Group A</em> is seeded for you.',
+    'swiss_system'         => 'Generate the first Swiss round on the <em>Schedule</em> page; equal records are paired each round.',
     'round_robin_playoffs' => 'Generate the round robin, then use <em>Create playoffs</em> after the last league match.',
     'single_elimination'   => 'Generate the seeded bracket on the <em>Schedule</em> page — byes are handled for you.',
+    'double_elimination'   => 'Generate the double-elimination bracket on the <em>Schedule</em> page; losers drop into the losers bracket.',
     'groups_knockout'      => 'Generate the group stage, then use <em>Advance qualifiers</em> to fill the knockout.',
     'pools_playoffs'       => 'Generate each bracket, then advance the qualifiers into the crossover pools.',
     'custom'               => 'Add a stage below, or build the matches by hand on the Schedule page.',
@@ -158,7 +162,7 @@ if ($setupTiebreakLabels) $setupScoringLine .= ' · tiebreaks ' . implode(' → 
         <?php if ($matchCount > 0): ?>
             <div class="lsp-note">
                 <i class="bi bi-lock-fill"></i>
-                <span>Locked: this league already has <?= (int) $matchCount ?> match<?= $matchCount === 1 ? '' : 'es' ?>. The structure can only be changed while there are no matches — delete them on the Schedule page first, use <strong>Discard setup &amp; start over</strong> below, or edit the stages by hand.</span>
+                <span>Locked: this league already has <?= (int) $matchCount ?> match<?= $matchCount === 1 ? '' : 'es' ?>. The structure can only be changed while there are no active matches — archive or delete them on the Schedule page first, use <strong>Discard setup &amp; start over</strong> below, or edit the stages by hand.</span>
             </div>
         <?php elseif ($stages): ?>
             <div class="lsp-note">

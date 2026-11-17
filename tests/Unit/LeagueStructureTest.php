@@ -386,6 +386,134 @@ class LeagueStructureTest extends TestCase
         ));
     }
 
+    public function testPlacementStagesDoNotHideAnyPreset(): void
+    {
+        $this->assertSame('round_robin', detectLeagueStructure(
+            self::skeleton([
+                ['type' => 'group', 'groups' => 1],
+                ['type' => 'placement', 'groups' => 0],
+            ])
+        ), 'A bronze match must not turn a round robin into a custom structure');
+
+        $this->assertSame('round_robin_playoffs', detectLeagueStructure(
+            self::skeleton([
+                ['type' => 'group', 'groups' => 1],
+                ['type' => 'knockout', 'groups' => 1],
+                ['type' => 'placement', 'groups' => 0],
+            ])
+        ));
+
+        $this->assertSame('single_elimination', detectLeagueStructure(
+            self::skeleton([
+                ['type' => 'knockout', 'groups' => 0],
+                ['type' => 'placement', 'groups' => 0],
+            ])
+        ));
+
+        $this->assertSame('double_elimination', detectLeagueStructure(
+            self::skeleton([
+                ['type' => 'knockout', 'groups' => 0, 'format' => 'double_elimination'],
+                ['type' => 'placement', 'groups' => 0],
+            ])
+        ));
+
+        $this->assertSame('groups_knockout', detectLeagueStructure(
+            self::skeleton([
+                ['type' => 'group', 'groups' => 4],
+                ['type' => 'knockout', 'groups' => 1],
+                ['type' => 'placement', 'groups' => 0],
+            ])
+        ));
+
+        $this->assertSame('pools_playoffs', detectLeagueStructure(
+            self::skeleton([
+                ['type' => 'group', 'groups' => 4],
+                ['type' => 'crossover', 'groups' => 2],
+                ['type' => 'knockout', 'groups' => 2],
+                ['type' => 'placement', 'groups' => 0],
+            ])
+        ));
+    }
+
+    public function testPlacementOnlySkeletonIsStillHandBuilt(): void
+    {
+        $this->assertNull(detectLeagueStructure(
+            self::skeleton([['type' => 'placement', 'groups' => 0]])
+        ), 'A lone placement stage is not a preset');
+    }
+
+    public function testSignatureIgnoresPlacementStages(): void
+    {
+        $withPlacement = self::skeleton([
+            ['type' => 'group', 'groups' => 1],
+            ['type' => 'placement', 'groups' => 0],
+        ]);
+        $withoutPlacement = self::skeleton([['type' => 'group', 'groups' => 1]]);
+
+        $this->assertSame(
+            leagueStructureSignature($withoutPlacement),
+            leagueStructureSignature($withPlacement)
+        );
+    }
+
+    public function testSwissGroupsAreNotMistakenForGroupsKnockout(): void
+    {
+        $this->assertNull(detectLeagueStructure(
+            self::skeleton([
+                ['type' => 'group', 'groups' => 2, 'format' => 'swiss'],
+                ['type' => 'knockout', 'groups' => 0],
+            ])
+        ), 'Only a round-robin first stage can be the groups_knockout preset');
+    }
+
+    public function testOnlyStageBasedPresetsExposeAStageTemplate(): void
+    {
+        foreach (leagueStructurePresets() as $key => $preset) {
+            if ($key === 'custom') {
+                $this->assertNull(leagueStructurePresetStages($key));
+                continue;
+            }
+            $this->assertSame($preset['stages'], leagueStructurePresetStages($key));
+        }
+
+        $this->assertNull(leagueStructurePresetStages('does_not_exist'));
+    }
+
+    public function testPresetSourcesPointAtExistingGroups(): void
+    {
+        foreach (leagueStructurePresets() as $key => $preset) {
+            $previousGroupCount = 0;
+
+            foreach ($preset['stages'] as $stageIndex => $stage) {
+                $groups  = $stage['groups'] ?? [];
+                $sources = $stage['sources'] ?? [];
+
+                if ($sources === 'all') {
+                    $this->assertNotEmpty($groups, "$key stage $stageIndex needs a target group for its all-sources map");
+                    $this->assertGreaterThan(0, $previousGroupCount, "$key stage $stageIndex has no previous groups to merge");
+                } else {
+                    foreach ($sources as $targetIndex => $sourceIndexes) {
+                        $this->assertArrayHasKey($targetIndex, $groups, "$key stage $stageIndex target group $targetIndex does not exist");
+                        foreach ((array)$sourceIndexes as $sourceIndex) {
+                            $this->assertGreaterThanOrEqual(0, $sourceIndex, "$key stage $stageIndex has a negative source index");
+                            $this->assertLessThan($previousGroupCount, $sourceIndex, "$key stage $stageIndex source group $sourceIndex does not exist");
+                        }
+                    }
+                }
+
+                $previousGroupCount = count($groups);
+            }
+        }
+    }
+
+    public function testPresetStageNamesAreUnique(): void
+    {
+        foreach (leagueStructurePresets() as $key => $preset) {
+            $names = array_map(static fn(array $stage): string => (string)$stage['name'], $preset['stages']);
+            $this->assertSame($names, array_values(array_unique($names)), "$key stage names must be unique");
+        }
+    }
+
     public function testStructurePresetCanBeAppliedOrChangedWhileNoMatchesExist(): void
     {
         foreach (['round_robin', 'swiss_system', 'single_elimination', 'double_elimination', 'round_robin_playoffs', 'groups_knockout', 'pools_playoffs'] as $key) {
@@ -409,6 +537,10 @@ class LeagueStructureTest extends TestCase
         $this->assertStringContainsString('built-in', (string) structurePresetApplyError('', 0));
         $this->assertStringContainsString('built-in', (string) structurePresetApplyError('triple_elimination', 0));
         $this->assertStringContainsString('custom structure', (string) structurePresetApplyError('custom', 0));
+        $this->assertNull(
+            structurePresetApplyError(' round_robin ', 0),
+            'A valid preset key with surrounding whitespace must still be accepted'
+        );
     }
 
     public function testEveryPresetStageDeclaresAKnownFormat(): void
