@@ -774,8 +774,10 @@ if ($protestIdParam > 0) {
                 'seed_b'  => $m['seed_b'],
                 'team_a'  => $m['team_a_name'],
                 'team_b'  => $m['team_b_name'],
-                'group'   => $group['name'] ?? ($m['placement'] ?? false ? 'Battle for Third' : ''),
-                'round'   => (int)$m['round'],
+                'group'        => $group['name'] ?? ($m['placement'] ?? false ? 'Battle for Third' : ''),
+                'round'        => (int)$m['round'],
+                'bracket_side' => (string)($m['bracket_side'] ?? ''),
+                'bye'          => !empty($m['bye']),
             ];
         }, $matched);
 
@@ -792,14 +794,36 @@ if ($protestIdParam > 0) {
         $stage = getStage($conn, $stageId);
         if (!$stage || (int)$stage['league_id'] !== $leagueId) { sendResponse(404, 'Stage not found for this league.'); return; }
 
-        /* A double-elimination stage always needs the graph engine: the legacy
-           patterns only know single-elimination brackets. */
-        if (stageFormat($stage) === 'double_elimination') {
+        /* Bracket formats use the graph engine so every preset bracket carries
+           bracket_side/node_key. Double elimination always did; a seeded
+           single-elimination draw now does too, which keeps the bracket view
+           and the advancement rules identical across bracket presets. The
+           pool-based playoff patterns keep the legacy generator. */
+        $bracketFormat = stageFormat($stage);
+        $useGraphBracket = $bracketFormat === 'double_elimination'
+            || ($bracketFormat === 'single_elimination' && $pattern === 'seeded_bracket');
+        if ($useGraphBracket) {
+            if ($bracketFormat === 'single_elimination' && count(getStageGroups($conn, $stageId)) > 1) {
+                sendResponse(400, 'The seeded bracket expects one pool of qualifiers. Choose a pool-based playoff pattern instead.');
+                return;
+            }
+
+            $bracketReset = $bracketFormat === 'double_elimination' && !empty($_POST['bracket_reset']);
+
             $teams  = stageSeededTeamIds($conn, $leagueId, $stageId);
-            $result = createBracketForStage($conn, $leagueId, $stageId, $teams, 'double_elimination');
+            $result = createBracketForStage($conn, $leagueId, $stageId, $teams, $bracketFormat, ['bracket_reset' => $bracketReset]);
             if (!empty($result['errors'])) { sendResponse(400, implode(' ', $result['errors'])); return; }
-            auditLog($conn, 'Generate Stage Bracket', "Generated a double-elimination bracket ({$result['created']} matches) for stage \"{$stage['name']}\"");
-            sendResponse(201, "{$result['created']} bracket match(es) generated for {$stage['name']} (winners + losers + grand final).", [
+
+            if ($bracketFormat === 'double_elimination' && function_exists('saveStageSettings')) {
+                $stageOptions = stageSettings($stage);
+                $stageOptions['bracket_reset'] = $bracketReset ? 1 : 0;
+                saveStageSettings($conn, $stageId, $stageOptions);
+            }
+
+            $bracketLabel = $bracketFormat === 'double_elimination' ? 'double-elimination' : 'single-elimination';
+            auditLog($conn, 'Generate Stage Bracket', "Generated a {$bracketLabel} bracket ({$result['created']} matches) for stage \"{$stage['name']}\"");
+            sendResponse(201, "{$result['created']} bracket match(es) generated for {$stage['name']} ({$bracketLabel}, {$result['byes']} bye row/s resolved)."
+                . ($bracketReset ? ' Bracket reset final enabled.' : ''), [
                 'created'   => $result['created'],
                 'byes'      => $result['byes'],
                 'match_ids' => $result['ids'],
@@ -848,12 +872,21 @@ if ($protestIdParam > 0) {
         }
         if ($existing > 0) { sendResponse(409, 'This stage already has fixtures. Archive them before drawing the bracket again.'); return; }
 
+        $bracketReset = $format === 'double_elimination' && !empty($_POST['bracket_reset']);
+
         $teams = stageSeededTeamIds($conn, $leagueId, $stageId);
-        $result = createBracketForStage($conn, $leagueId, $stageId, $teams, $format);
+        $result = createBracketForStage($conn, $leagueId, $stageId, $teams, $format, ['bracket_reset' => $bracketReset]);
         if (!empty($result['errors'])) { sendResponse(400, implode(' ', $result['errors'])); return; }
 
+        if ($format === 'double_elimination' && function_exists('saveStageSettings')) {
+            $stageOptions = stageSettings($stage);
+            $stageOptions['bracket_reset'] = $bracketReset ? 1 : 0;
+            saveStageSettings($conn, $stageId, $stageOptions);
+        }
+
         auditLog($conn, 'Generate Bracket', "Drew a $format bracket ({$result['created']} matches) for stage \"{$stage['name']}\" in league ID $leagueId");
-        sendResponse(201, "{$result['created']} bracket match(es) generated for {$stage['name']} ({$result['byes']} bye row/s resolved).", [
+        sendResponse(201, "{$result['created']} bracket match(es) generated for {$stage['name']} ({$result['byes']} bye row/s resolved)."
+            . ($bracketReset ? ' Bracket reset final enabled.' : ''), [
             'created'   => $result['created'],
             'byes'      => $result['byes'],
             'match_ids' => $result['ids'],

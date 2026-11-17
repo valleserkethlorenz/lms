@@ -134,6 +134,39 @@ function stageFormatUsesTable(string $format): bool
     return in_array($format, ['round_robin', 'swiss'], true);
 }
 
+/**
+ * Decoded per-stage options from tbl_league_stage.settings_json.
+ *
+ * @return array<string,mixed>
+ */
+function stageSettings(array $stage): array
+{
+    $raw = (string)($stage['settings_json'] ?? '');
+    if (trim($raw) === '') return [];
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+/** One value from the stage settings, or $default when it is absent. */
+function stageSetting(array $stage, string $key, $default = null)
+{
+    $settings = stageSettings($stage);
+    return array_key_exists($key, $settings) ? $settings[$key] : $default;
+}
+
+/** Merge and persist stage options. Callers must keep the keys they do not own. */
+function saveStageSettings(mysqli $conn, int $stageId, array $settings): bool
+{
+    $payload = $settings ? json_encode($settings, JSON_UNESCAPED_UNICODE) : null;
+    if ($payload === false && $settings) return false;
+    $stmt = $conn->prepare("UPDATE tbl_league_stage SET settings_json = ? WHERE id = ?");
+    if (!$stmt) return false;
+    $stmt->bind_param('si', $payload, $stageId);
+    $ok = $stmt->execute();
+    $stmt->close();
+    return $ok;
+}
+
 /* =========================================================================
  * 2. Pure: bracket geometry
  * ====================================================================== */
@@ -178,7 +211,7 @@ function bracketRoundLabel(int $round, int $totalRounds, string $side = 'winners
     elseif ($fromEnd === 5)  $name = 'Round of 32';
 
     if ($side === 'losers')      return 'Losers ' . $name;
-    if ($side === 'grand_final') return 'Grand Final';
+    if ($side === 'grand_final') return $round > 1 ? 'Grand Final reset' : 'Grand Final';
     return $name;
 }
 
@@ -649,35 +682,48 @@ function ensureTournamentEngineSchema(mysqli $conn): bool
         if ($add) @$conn->query("ALTER TABLE `$table` " . implode(', ', $add));
     }
 
-    @$conn->query("CREATE TABLE IF NOT EXISTS tbl_league_stage_transition (
-        id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        league_id INT NOT NULL,
-        from_stage_id INT NULL,
-        to_stage_id INT NOT NULL,
-        rule ENUM('top_per_group','top_overall','bottom_consolation') NOT NULL DEFAULT 'top_per_group',
-        advance_count INT NOT NULL DEFAULT 2,
-        settings_json TEXT NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NULL,
-        UNIQUE KEY uq_stage_transition_target (to_stage_id),
-        KEY idx_stage_transition_league (league_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    /* DDL causes an implicit COMMIT in MySQL, so only create the tables when
+       they are actually missing. Running CREATE TABLE IF NOT EXISTS on every
+       request silently committed callers' bracket-generation transactions. */
+    $transitionTable = @$conn->query("SHOW TABLES LIKE 'tbl_league_stage_transition'");
+    $hasTransitionTable = $transitionTable && $transitionTable->num_rows > 0;
+    if ($transitionTable) $transitionTable->free();
+    if (!$hasTransitionTable) {
+        @$conn->query("CREATE TABLE IF NOT EXISTS tbl_league_stage_transition (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            league_id INT NOT NULL,
+            from_stage_id INT NULL,
+            to_stage_id INT NOT NULL,
+            rule ENUM('top_per_group','top_overall','bottom_consolation') NOT NULL DEFAULT 'top_per_group',
+            advance_count INT NOT NULL DEFAULT 2,
+            settings_json TEXT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NULL,
+            UNIQUE KEY uq_stage_transition_target (to_stage_id),
+            KEY idx_stage_transition_league (league_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
 
-    @$conn->query("CREATE TABLE IF NOT EXISTS tbl_league_stage_slot (
-        id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        stage_id INT NOT NULL,
-        slot_code VARCHAR(24) NOT NULL,
-        label VARCHAR(80) NOT NULL,
-        slot_order INT NOT NULL DEFAULT 1,
-        source_stage_id INT NULL,
-        source_group_id INT NULL,
-        source_rank INT NULL,
-        source_kind ENUM('seed','group_rank','group_winner','loser','manual','bye') NOT NULL DEFAULT 'manual',
-        team_id INT NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_stage_slot (stage_id, slot_code),
-        KEY idx_stage_slot_order (stage_id, slot_order)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $slotTable = @$conn->query("SHOW TABLES LIKE 'tbl_league_stage_slot'");
+    $hasSlotTable = $slotTable && $slotTable->num_rows > 0;
+    if ($slotTable) $slotTable->free();
+    if (!$hasSlotTable) {
+        @$conn->query("CREATE TABLE IF NOT EXISTS tbl_league_stage_slot (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            stage_id INT NOT NULL,
+            slot_code VARCHAR(24) NOT NULL,
+            label VARCHAR(80) NOT NULL,
+            slot_order INT NOT NULL DEFAULT 1,
+            source_stage_id INT NULL,
+            source_group_id INT NULL,
+            source_rank INT NULL,
+            source_kind ENUM('seed','group_rank','group_winner','loser','manual','bye') NOT NULL DEFAULT 'manual',
+            team_id INT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_stage_slot (stage_id, slot_code),
+            KEY idx_stage_slot_order (stage_id, slot_order)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
 
     // Keep legacy rows in step with their stage type (same backfill as the
     // migration) so a knockout stage never reads as a round robin.
@@ -902,16 +948,41 @@ function syncBracketFeeds(mysqli $conn, int $leagueId, int $stageId): int
     return $writes;
 }
 
-/** Close a bracket row that has exactly one team: the team advances automatically. */
+/**
+ * Close a bracket row that has exactly one team: the team advances automatically.
+ *
+ * The surviving team is normalised to side A and the empty side is stamped
+ * `seed_b = 'BYE'`. Older rows could hold the team on side B with a feeder
+ * label on the empty side, which made the bracket view draw them as completed
+ * finals instead of byes.
+ */
 function completeBracketBye(mysqli $conn, int $matchId, int $teamId): bool
 {
     if ($matchId <= 0 || $teamId <= 0) return false;
+
+    $stmt = $conn->prepare("SELECT team_a, team_b, seed_a, seed_b FROM tbl_schedule WHERE id = ? LIMIT 1");
+    if (!$stmt) return false;
+    $stmt->bind_param('i', $matchId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$row) return false;
+
+    $teamA = (int)$row['team_a'];
+    $teamB = (int)$row['team_b'];
+    if (($teamA > 0) === ($teamB > 0)) return false;
+    if ($teamA !== $teamId && $teamB !== $teamId) return false;
+
+    $seedA = $teamA === $teamId ? $row['seed_a'] : $row['seed_b'];
+    $seedA = $seedA === null || trim((string)$seedA) === '' ? null : (string)$seedA;
+
     $stmt = $conn->prepare("UPDATE tbl_schedule
-                               SET status = 'Completed', winner = ?, a_score = 0, b_score = 0,
+                               SET team_a = ?, team_b = 0, seed_a = ?, seed_b = 'BYE',
+                                   status = 'Completed', winner = ?, a_score = 0, b_score = 0,
                                    published_at = NOW(), result_note = 'Bye — advances automatically'
                              WHERE id = ? AND LOWER(status) <> 'completed'");
     if (!$stmt) return false;
-    $stmt->bind_param('ii', $teamId, $matchId);
+    $stmt->bind_param('isii', $teamId, $seedA, $teamId, $matchId);
     $stmt->execute();
     $changed = $stmt->affected_rows > 0;
     $stmt->close();
@@ -1011,6 +1082,23 @@ function createBracketForStage(mysqli $conn, int $leagueId, int $stageId, array 
         return $result;
     }
 
+    // Never append a second draw to a stage that already has fixtures. The
+    // graph engine used to rely on every caller doing this check; keeping it
+    // here protects the endpoint paths that call the engine directly.
+    $existingStmt = $conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule
+                                    WHERE league_id = ? AND stage_id = ?
+                                      AND (is_archived = 0 OR is_archived IS NULL)");
+    if ($existingStmt) {
+        $existingStmt->bind_param('ii', $leagueId, $stageId);
+        $existingStmt->execute();
+        $existingCount = (int)($existingStmt->get_result()->fetch_assoc()['c'] ?? 0);
+        $existingStmt->close();
+        if ($existingCount > 0) {
+            $result['errors'][] = 'This stage already has fixtures. Archive or delete them before drawing the bracket again.';
+            return $result;
+        }
+    }
+
     $unique = [];
     foreach ($seedTeamIds as $teamId) {
         $teamId = (int)$teamId;
@@ -1082,12 +1170,136 @@ function bracketFinalNode(mysqli $conn, int $leagueId, int $stageId): ?array
     return null;
 }
 
+/** The optional second grand final of a double-elimination stage. */
+function bracketResetFinalNode(mysqli $conn, int $leagueId, int $stageId): ?array
+{
+    $stmt = $conn->prepare("SELECT * FROM tbl_schedule
+                             WHERE league_id = ? AND stage_id = ? AND node_key = 'GF-M2'
+                               AND (is_archived = 0 OR is_archived IS NULL)
+                             ORDER BY id DESC LIMIT 1");
+    if (!$stmt) return null;
+    $stmt->bind_param('ii', $leagueId, $stageId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row ?: null;
+}
+
+/** Route GF-M1's winner and loser into GF-M2, or clear the link again. */
+function setBracketResetLinks(mysqli $conn, int $gf1Id, bool $enabled): void
+{
+    if ($gf1Id <= 0) return;
+    if ($enabled) {
+        $stmt = $conn->prepare("UPDATE tbl_schedule
+                                   SET next_node_key = 'GF-M2', next_node_slot = 'a',
+                                       loser_next_node_key = 'GF-M2', loser_next_node_slot = 'b'
+                                 WHERE id = ? AND node_key = 'GF-M1'");
+    } else {
+        $stmt = $conn->prepare("UPDATE tbl_schedule
+                                   SET next_node_key = NULL, next_node_slot = NULL,
+                                       loser_next_node_key = NULL, loser_next_node_slot = NULL
+                                 WHERE id = ? AND node_key = 'GF-M1'");
+    }
+    if (!$stmt) return;
+    $stmt->bind_param('i', $gf1Id);
+    $stmt->execute();
+    $stmt->close();
+}
+
+/**
+ * Create (or repair) the bracket-reset grand final.
+ *
+ * Both grand-finalists meet again after the losers-bracket entrant wins GF-M1.
+ * The reset row is created on demand, never up front, so a reset that is not
+ * required leaves no unused fixture behind.
+ */
+function ensureBracketResetFinal(mysqli $conn, int $leagueId, int $stageId, array $gf1, int $winnerId, int $loserId): int
+{
+    if ($winnerId <= 0 || $loserId <= 0) return 0;
+
+    $existing = bracketResetFinalNode($conn, $leagueId, $stageId);
+    if ($existing) {
+        if (strtolower((string)$existing['status']) !== 'completed') {
+            $repair = $conn->prepare("UPDATE tbl_schedule
+                                         SET team_a = ?, team_b = ?, seed_a = 'GF1 W', seed_b = 'GF1 L'
+                                       WHERE id = ? AND LOWER(status) <> 'completed'");
+            if ($repair) {
+                $existingId = (int)$existing['id'];
+                $repair->bind_param('iii', $winnerId, $loserId, $existingId);
+                $repair->execute();
+                $repair->close();
+            }
+        }
+        setBracketResetLinks($conn, (int)($gf1['id'] ?? 0), true);
+        return (int)$existing['id'];
+    }
+
+    $stageGroupId = isset($gf1['stage_group_id']) && $gf1['stage_group_id'] !== null
+        ? (int)$gf1['stage_group_id'] : null;
+    $bestOf = !empty($gf1['best_of']) ? (int)$gf1['best_of'] : null;
+    $node = [
+        'key'        => 'GF-M2',
+        'side'       => 'grand_final',
+        'round'      => max(1, (int)($gf1['round'] ?? 1)) + 1,
+        'index'      => 2,
+        'slots'      => ['a' => null, 'b' => null],
+        'next'       => null,
+        'loser_next' => null,
+        'best_of'    => $bestOf,
+    ];
+
+    $matchId = insertBracketNode($conn, $leagueId, $stageId, $stageGroupId, $node, 'knockout');
+    if ($matchId <= 0) return 0;
+
+    $fill = $conn->prepare("UPDATE tbl_schedule
+                               SET team_a = ?, team_b = ?, seed_a = 'GF1 W', seed_b = 'GF1 L'
+                             WHERE id = ?");
+    if ($fill) {
+        $fill->bind_param('iii', $winnerId, $loserId, $matchId);
+        $fill->execute();
+        $fill->close();
+    }
+
+    setBracketResetLinks($conn, (int)($gf1['id'] ?? 0), true);
+    return $matchId;
+}
+
+/** Drop an unplayed reset final and restore GF-M1 as the terminal node. */
+function clearBracketResetFinal(mysqli $conn, int $leagueId, int $stageId, int $gf1Id): int
+{
+    $reset = bracketResetFinalNode($conn, $leagueId, $stageId);
+    if ($reset && strtolower((string)$reset['status']) === 'completed') return 0;
+
+    $removed = 0;
+    if ($reset) {
+        $stmt = $conn->prepare("DELETE FROM tbl_schedule
+                                 WHERE id = ? AND league_id = ? AND stage_id = ?
+                                   AND node_key = 'GF-M2' AND LOWER(status) <> 'completed'");
+        if ($stmt) {
+            $resetId = (int)$reset['id'];
+            $stmt->bind_param('iii', $resetId, $leagueId, $stageId);
+            $stmt->execute();
+            $removed = $stmt->affected_rows > 0 ? 1 : 0;
+            $stmt->close();
+        }
+    }
+    // Only release the graph links once no reset row remains (protects the
+    // bracket if the delete itself failed).
+    if (!bracketResetFinalNode($conn, $leagueId, $stageId)) {
+        setBracketResetLinks($conn, $gf1Id, false);
+    }
+    return $removed;
+}
+
 /**
  * Progress one bracket match through the node graph.
  *
  * Winner  -> next_node_key/next_node_slot
  * Loser   -> loser_next_node_key/loser_next_node_slot (double elimination)
  * Loser   -> eliminated (single elimination, losers bracket, grand final)
+ *
+ * Exception: a GF-M1 losers-side win with bracket_reset enabled creates GF-M2
+ * and keeps both teams alive; GF-M2 decides the champion.
  *
  * @return array<string,mixed> actions for tournamentProgression + notifications
  */
@@ -1099,6 +1311,7 @@ function progressBracketStageMatch(mysqli $conn, int $leagueId, int $scheduleId,
     $side     = (string)($match['bracket_side'] ?? 'winners');
     $isDouble = $format === 'double_elimination';
     $loser    = bracketMatchLoser($match);
+    if (!isset($match['id'])) $match['id'] = $scheduleId;
 
     $actions = [
         'stage_id'     => $stageId,
@@ -1112,10 +1325,36 @@ function progressBracketStageMatch(mysqli $conn, int $leagueId, int $scheduleId,
 
     if ($winnerId > 0) $actions['advanced'][] = $winnerId;
 
+    /* Double-elimination reset final: when the losers-bracket entrant wins
+       GF-M1, both teams have one loss and meet again. The reset row is created
+       on demand, so a winners-side GF1 win leaves no unused fixture. */
+    $resetEnabled = $isDouble && $stage && !empty(stageSetting($stage, 'bracket_reset', 0));
+    $isFirstGrandFinal = $isDouble && $side === 'grand_final'
+        && (string)($match['node_key'] ?? '') === 'GF-M1';
+    $resetRequired = false;
+    if ($isFirstGrandFinal) {
+        $winnersFinalist = (int)($match['team_a'] ?? 0);
+        $losersFinalist  = (int)($match['team_b'] ?? 0);
+        if ($resetEnabled && $winnerId > 0 && $loser > 0
+            && $losersFinalist > 0 && $winnerId === $losersFinalist) {
+            $resetId = ensureBracketResetFinal($conn, $leagueId, $stageId, $match, $winnerId, $loser);
+            if ($resetId > 0) {
+                $resetRequired = true;
+                $actions['bracket_reset_required'] = true;
+                $actions['bracket_reset_match_id'] = $resetId;
+            }
+        } else {
+            // A winners-side win (or reset disabled) ends the tournament. Drop
+            // an unplayed reset left behind by a corrected earlier result.
+            clearBracketResetFinal($conn, $leagueId, $stageId, (int)$match['id']);
+        }
+    }
+
     // A winners-bracket loss in double elimination drops the team down one
-    // bracket; every other loss ends the team's tournament.
+    // bracket; every other loss ends the team's tournament. The GF1 loser in
+    // a reset final stays alive for GF-M2.
     $dropsDown = $isDouble && $side === 'winners' && !empty($match['loser_next_node_key']);
-    if ($loser > 0 && !$dropsDown) {
+    if ($loser > 0 && !$dropsDown && !$resetRequired) {
         if (function_exists('markTeamProgression')) markTeamProgression($conn, $loser, 'Eliminated');
         if (function_exists('logProgression')) logProgression($conn, $leagueId, $scheduleId, 'eliminate', $loser, null, 'Eliminated');
         $actions['eliminated'][] = $loser;
@@ -1233,7 +1472,8 @@ function swissStandingsRows(mysqli $conn, int $leagueId, int $stageId): array
         $played[$pair['b']][] = $pair['a'];
     }
     $byes = [];
-    $stmt = $conn->prepare("SELECT team_a FROM tbl_schedule
+    $stmt = $conn->prepare("SELECT CASE WHEN team_a > 0 THEN team_a ELSE team_b END AS team_a
+                             FROM tbl_schedule
                              WHERE league_id = ? AND stage_id = ? AND LOWER(status) = 'completed'
                                AND (team_a = 0 OR team_b = 0)
                                AND (is_archived = 0 OR is_archived IS NULL)");

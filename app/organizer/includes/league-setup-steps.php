@@ -147,13 +147,36 @@ $wizardFormatIcons = [
     'groups_knockout'      => 'bi-diagram-3',
     'pools_playoffs'       => 'bi-bounding-box-circles',
 ];
+$wizardPresetDefinitions = function_exists('leagueStructurePresets') ? leagueStructurePresets() : [];
 $wizardFormatCards = [];
 foreach ($setupStructureCards as $wizardFormatKey => $wizardFormatCard) {
+    /* A tiny stage-flow diagram derived from the preset: Table → Bracket,
+       Groups → Bracket, WB + LB + GF, etc. It gives the Format step a visual
+       shape without duplicating the preset definitions. */
+    $wizardFormatFlow = [];
+    foreach (($wizardPresetDefinitions[$wizardFormatKey]['stages'] ?? []) as $wizardFormatStage) {
+        $wizardStageType   = (string) ($wizardFormatStage['type'] ?? '');
+        $wizardStageFormat = (string) ($wizardFormatStage['format'] ?? '');
+        $wizardStageGroups = count($wizardFormatStage['groups'] ?? []);
+        if ($wizardStageType === 'placement') {
+            $wizardFormatFlow[] = '3rd place';
+        } elseif ($wizardStageType === 'crossover') {
+            $wizardFormatFlow[] = 'Pools';
+        } elseif ($wizardStageType === 'knockout') {
+            $wizardFormatFlow[] = $wizardStageFormat === 'double_elimination' ? 'WB + LB + GF' : 'Bracket';
+        } elseif ($wizardStageFormat === 'swiss') {
+            $wizardFormatFlow[] = 'Swiss';
+        } else {
+            $wizardFormatFlow[] = $wizardStageGroups > 1 ? 'Groups ×' . $wizardStageGroups : 'Table';
+        }
+    }
+
     $wizardFormatCards[] = [
         'key'         => (string) $wizardFormatKey,
         'title'       => (string) ($wizardFormatCard['title'] ?? $wizardFormatKey),
         'text'        => (string) ($wizardFormatCard['text'] ?? ''),
         'icon'        => $wizardFormatIcons[$wizardFormatKey] ?? 'bi-diagram-3',
+        'flow'        => $wizardFormatFlow,
         'recommended' => $wizardFormatKey === 'round_robin_playoffs',
         'current'     => $setupStructureKey === $wizardFormatKey,
     ];
@@ -182,7 +205,6 @@ if ($wizardFormatCheckedKey === '' && !$stages) {
    prefilled from the current stage row when this preset is applied, otherwise
    from the preset defaults or the smart group recommendation. */
 $wizardEditableSettings = function_exists('leagueStructureEditableSettings') ? leagueStructureEditableSettings() : [];
-$wizardPresetDefinitions = function_exists('leagueStructurePresets') ? leagueStructurePresets() : [];
 $wizardRecommendationTeams = (int) ($approvedTeamCount > 0
     ? $approvedTeamCount
     : (isset($league['max_team']) ? (int) $league['max_team'] : 0));
@@ -241,21 +263,28 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
     $defaultPattern = (string) array_key_first($options);
     $defaultLabel   = (string) ($options[$defaultPattern] ?? '');
 
-    /* The legacy preview engine only models single-elimination brackets, so a
-       double-elimination stage is generated without a misleading preview. */
+    /* Single elimination previews use the legacy round list; a double
+       elimination stage is previewed from its pure winners/losers/final plan. */
     $isDoubleElimination = function_exists('stageFormat') && stageFormat($stage) === 'double_elimination';
+    $resetChecked = $isDoubleElimination
+        && function_exists('stageSetting')
+        && !empty(stageSetting($stage, 'bracket_reset', 0));
     if ($isDoubleElimination) {
         $defaultLabel = 'Double elimination — winners bracket, losers bracket and grand final';
     }
-    $previewButton = $isDoubleElimination
-        ? ''
-        : '<button type="button" class="btn btn-outline-primary js-wizard-preview"><i class="bi bi-eye me-1" aria-hidden="true"></i>Preview</button>';
+    $previewButton = '<button type="button" class="btn btn-outline-primary js-wizard-preview"><i class="bi bi-eye me-1" aria-hidden="true"></i>Preview</button>';
+    $resetField = $isDoubleElimination
+        ? '<label class="lsp-check lsp-generate-reset"><input type="checkbox" name="bracket_reset" value="1"'
+            . ($resetChecked ? ' checked' : '') . '> Bracket reset grand final'
+            . '<small>If the losers-bracket team wins the first final, play a second one.</small></label>'
+        : '';
 
     return '<div class="lsp-generate js-wizard-generate" data-stage-id="' . $stageId . '">'
         . '<div class="lsp-generate-field">'
         . '<div class="form-label">Draw</div>'
         . '<div class="lsp-generate-value">' . htmlspecialchars($defaultLabel, ENT_QUOTES) . '</div>'
         . '<input type="hidden" name="pattern" value="' . htmlspecialchars($defaultPattern, ENT_QUOTES) . '">'
+        . $resetField
         . '</div>'
         . '<div class="lsp-generate-actions">'
         . $previewButton
@@ -323,6 +352,14 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
                             <span class="lsp-format-copy">
                                 <b><?= htmlspecialchars($wizardFormatCard['title']) ?></b>
                                 <small><?= htmlspecialchars($wizardFormatCard['text']) ?></small>
+                                <?php if (!empty($wizardFormatCard['flow'])): ?>
+                                    <span class="lsp-format-flow" aria-hidden="true">
+                                        <?php foreach ($wizardFormatCard['flow'] as $wizardFlowIndex => $wizardFlowStep): ?>
+                                            <?php if ($wizardFlowIndex > 0): ?><i class="bi bi-arrow-right"></i><?php endif; ?>
+                                            <em><?= htmlspecialchars((string) $wizardFlowStep, ENT_QUOTES) ?></em>
+                                        <?php endforeach; ?>
+                                    </span>
+                                <?php endif; ?>
                             </span>
                             <?php if ($wizardCardCurrent): ?><span class="lsp-format-mark" title="Currently applied"><i class="bi bi-check-lg" aria-hidden="true"></i></span><?php endif; ?>
                         </label>
@@ -650,11 +687,19 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
                         <button name="generateSwissRound" class="btn btn-primary"><i class="bi bi-shuffle me-1" aria-hidden="true"></i>Generate Swiss round</button>
                     </form>
                 <?php elseif ($wizardTaskSeededFromGroups): ?>
-                    <p class="lsp-help">The qualifiers are placed. Draw the single seeded bracket from every team in <?= htmlspecialchars($wizardTaskStageName) ?>.</p>
+                    <p class="lsp-help">The qualifiers are placed. Draw the seeded bracket from every team in <?= htmlspecialchars($wizardTaskStageName) ?>.</p>
                     <form method="post" class="lsp-actions">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
                         <input type="hidden" name="league_id" value="<?= (int) $id ?>">
                         <input type="hidden" name="stage_id" value="<?= (int) $wizardTaskStageId ?>">
+                        <?php if ($wizardTaskStageFormat === 'double_elimination'): ?>
+                            <label class="lsp-check lsp-generate-reset">
+                                <input type="checkbox" name="bracket_reset" value="1"
+                                    <?= function_exists('stageSetting') && !empty(stageSetting($wizardTaskStage, 'bracket_reset', 0)) ? 'checked' : '' ?>>
+                                Bracket reset grand final
+                                <small>If the losers-bracket team wins the first final, play a second one.</small>
+                            </label>
+                        <?php endif; ?>
                         <button name="generateSeededBracket" class="btn btn-primary"><i class="bi bi-diagram-2 me-1" aria-hidden="true"></i>Generate bracket</button>
                     </form>
                 <?php else: ?>

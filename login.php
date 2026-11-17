@@ -80,7 +80,7 @@ include 'includes/header.php';
     .login-secondary-link:hover{border-color:#cbd9ee;background:#eef4ff;color:var(--primary);text-decoration:none}
     .login-secondary-link i{flex:0 0 auto;font-size:13px}
     .login-home-link{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:#53617a;font-size:13px;font-weight:600;text-decoration:none}
-    .login-home-link:hover{color:var(--primary);text-decoration:underline}
+    .login-home-link:hover{color:var(--primary);text-decoration:none}
 
     #result{color:#dc2626;margin-top:8px}
 

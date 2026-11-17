@@ -70,8 +70,8 @@ Key tables: `tbl_league` (`stat`, `grouping_enabled`),
 
 ## 3. Structures
 
-League creation no longer asks for a structure: the organizer applies one of the **five
-structures** on the Setup page after the league is saved (Setup now / Set up later). The
+League creation no longer asks for a structure: the organizer applies one of the
+**available structures** on the Setup page after the league is saved (Setup now / Set up later). The
 chosen preset seeds the stage/group skeleton and can only be applied once — before the first
 stage or match exists. There is no league "format" column or Admin format list any more.
 
@@ -80,6 +80,7 @@ stage or match exists. There is no league "format" column or Admin format list a
 | **Round robin** | `League Stage` (group) + `Group A` | `round_robin_groups` from Setup step 3 (default draw + preview) | standings; optional seeded playoffs from Setup step 3 |
 | **Round robin + playoffs** | `League Stage` (group) + `Group A`, then `Playoffs` (knockout, empty) | `round_robin_groups`, then `Create playoffs` → `seeded_bracket` | standings; top N promoted; QF/SF/Final advance automatically |
 | **Single elimination** | `Bracket` (knockout) | `seeded_bracket` (seeds 1…N, byes) | winners advance; final → champion |
+| **Double elimination** | `Bracket` (knockout, double) | `seeded_bracket` winners/losers graph | winners advance, losers drop; GF → champion; optional GF-M2 reset |
 | **Groups → knockout** | `Group Stage` (2–8 groups) + `Knockout` | RR in each group, then promote top N and generate a knockout pattern | group tables; promotion; knockout advances |
 | **Pools → crossover → playoffs** | Brackets A–D → Crossover/Pools → Playoffs | RR in brackets; crossover; full playoffs | auto-promotes 2 per bracket, then 4 per pool; auto champion |
 | **Custom** | none | round-robin pairing assistant (no stages) | standings only |
@@ -90,7 +91,10 @@ stage or match exists. There is no league "format" column or Admin format list a
 * `group` / `crossover` — update the table; report round/stage completion; when the
   stage has `qualifiers_per_group`, **auto-promote** its qualifiers into the next stage.
 * `knockout` — eliminate the loser, fill the winner's exact next-round slot immediately,
-  feed the Battle for Third; the final winner becomes `Qualified` (champion).
+  feed the Battle for Third; the final winner becomes `Qualified` (champion). In double
+  elimination, winners-bracket losers drop into the losers bracket. With `bracket_reset`
+  enabled, a losers-side win in GF-M1 creates GF-M2 and keeps both teams alive; the
+  GF-M2 winner is champion.
 * `placement` — record the third-place result.
 
 The **first stage's groups are seeded with the approved teams** on the first draw
@@ -110,8 +114,10 @@ Manual assignments in the target stage always win over automatic promotion.
 rows and never block a round). A completed winner is placed into its exact next-round
 slot immediately; the bracket does not wait for the whole round to finish.
 
-Double Elimination and Swiss System were retired with the format model; there is no
-stage equivalent for them.
+**Double elimination** uses the winners/losers/grand-final graph engine. The optional
+`bracket_reset` stage setting adds a second grand final when the losers-bracket entrant
+wins the first. **Swiss** stages use `rounds_planned`; each completed round is followed
+by generating the next round from the current standings.
 
 ---
 
@@ -191,8 +197,8 @@ after it is completed.
 
 1. **Draws in knockouts** remove both teams from the next round (`winner = 0` is filtered
    out of the winners list). Force a decisive result.
-2. **The seeded single-elimination bracket accepts any team count from 2 upwards**;
-   missing seeds become byes. Double Elimination and Swiss no longer exist.
+2. **The seeded bracket accepts any team count from 2 upwards**; missing seeds become
+   byes. Double elimination uses the same graph engine; Swiss stages use `rounds_planned`.
 3. **Cancelled / postponed matches block round completion** — the round-complete check
    compares "all playable rows" vs "completed rows". Void or reschedule them.
 4. **`stat` can be stale.** It is only refreshed by league publish/archive/restore, team
@@ -211,6 +217,9 @@ after it is completed.
 8. **The standings formula is generic** (`W = 3`, `D = 1`, raw points-for/against).
    Sport-specific scoring (sets, frames) is stored in
    `tbl_schedule.result_breakdown` (JSON) but is **not** used for ranking.
+9. **A bracket-reset final (`GF-M2`) is created on demand** only when the losers-bracket
+   entrant wins GF-M1. If GF-M1 is corrected after GF-M2 has been played, reopen GF-M2
+   first so its result is reversed before correcting the first final.
 
 ---
 

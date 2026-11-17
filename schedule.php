@@ -163,6 +163,12 @@ require_once __DIR__ . '/includes/league_header.php';
     .sch-bracket-table .sch-bracket-cell.has-feeders { padding-left:34px; }
     .sch-bracket-cell.has-feeders::before { content:''; position:absolute; left:0; top:25%; height:50%; border-left:2px solid var(--sch-bracket-line); }
     .sch-bracket-match { position:relative; display:flex; flex-direction:column; min-width:196px; overflow:hidden; border:1px solid #3a414b; border-radius:5px; background:linear-gradient(180deg,#2c3138 0%,#262b31 100%); box-shadow:0 2px 6px rgba(0,0,0,.24); }
+    .sch-bracket-match.has-group { padding-top:15px; }
+    .sch-bracket-match.is-skeleton { border-style:dashed; background:#23272d; }
+    .sch-bracket-group { position:absolute; top:4px; right:8px; color:#7f8a97; font-size:8.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; }
+    .sch-bracket-preview-note { margin:0 0 12px; font-size:11.5px; color:#8d97a4; line-height:1.5; }
+    .sch-bracket-preview-note i { margin-right:4px; color:#22c55e; }
+    .sch-bracket-preview-note strong { color:#cbd5e1; }
     .sch-bracket-cell.has-feeders .sch-bracket-match::before { content:''; position:absolute; left:-34px; top:50%; width:34px; border-top:2px solid var(--sch-bracket-line); }
     .sch-bracket-match.is-bye { border-style:dashed; background:#23272d; }
     .sch-bracket-match.is-tbd { background:#23272d; }
@@ -261,7 +267,7 @@ require_once __DIR__ . '/includes/league_header.php';
                     <button type="button" class="sch-view-btn is-active" data-sch-view="list" aria-pressed="true">
                         <i class="bi bi-list-ul" aria-hidden="true"></i><span>Fixtures</span>
                     </button>
-                    <button type="button" class="sch-view-btn" data-sch-view="bracket" aria-pressed="false">
+                    <button type="button" class="sch-view-btn" id="bracketViewBtn" data-sch-view="bracket" aria-pressed="false">
                         <i class="bi bi-diagram-3" aria-hidden="true"></i><span>Bracket</span>
                     </button>
                 </div>
@@ -338,13 +344,16 @@ require_once __DIR__ . '/includes/league_header.php';
 
 <?php include 'includes/footer.php'; ?>
 
+<script src="assets/js/bracket-core.js"></script>
 <script>
+    const BracketCore = window.LmsBracketCore;
     const leagueId = <?php echo (int) $leagueId; ?>;
     const teamId = <?php echo (int) $teamId; ?>;
 
     const scheduleState = {
         matches: [],
         bracketMatches: [],
+        bracketStages: [],
         loading: false,
         error: false,
         renderedAt: 0,
@@ -388,6 +397,11 @@ require_once __DIR__ . '/includes/league_header.php';
                 const button = event.target.closest('[data-bracket-stage]');
                 if (!button) return;
                 scheduleState.bracketStageKey = button.getAttribute('data-bracket-stage') || '';
+                try {
+                    window.sessionStorage.setItem('lmsBracketStage:' + leagueId, scheduleState.bracketStageKey);
+                } catch (error) {
+                    // Ignore storage failures (private mode / quota).
+                }
                 renderBracket();
             });
         }
@@ -485,6 +499,19 @@ require_once __DIR__ . '/includes/league_header.php';
             scheduleState.bracketMatches = Array.isArray(res.bracket)
                 ? res.bracket.slice()
                 : matches.slice();
+            scheduleState.bracketStages = Array.isArray(res.bracket_stages)
+                ? res.bracket_stages.slice()
+                : [];
+
+            // The Bracket toggle only makes sense when the structure actually
+            // has a bracket stage (or a legacy bracket row).
+            const hasBracketView = scheduleState.bracketStages.length > 0
+                || scheduleState.bracketMatches.some(isBracketMatch);
+            const bracketToggle = document.getElementById('bracketViewBtn');
+            if (bracketToggle) bracketToggle.classList.toggle('d-none', !hasBracketView);
+            if (!hasBracketView && scheduleState.view === 'bracket') {
+                setScheduleView('list', false);
+            }
 
             // Optional ?team_id= scope (used by team-specific fixture links).
             if (teamId) {
@@ -636,7 +663,7 @@ require_once __DIR__ . '/includes/league_header.php';
 
     // A bye slot is the one-team row the bracket generator auto-completes.
     function isByeMatch(match) {
-        return Number(match.team_b) === 0 && String(match.seed_b || '').toUpperCase() === 'BYE';
+        return BracketCore.isByeMatch(match);
     }
 
     function isPublishedMatch(match) {
@@ -651,9 +678,12 @@ require_once __DIR__ . '/includes/league_header.php';
         const stageFormat = String(match.stage_format || '').toLowerCase();
         if (stageType === 'placement') return false;
         if (stageType === 'knockout') return true;
+        // A table stage stays a table even if a stale format column says
+        // otherwise; the engine reads the type-compatible format.
+        if (stageType === 'group' || stageType === 'crossover') return false;
         if (stageFormat === 'single_elimination' || stageFormat === 'double_elimination') return true;
         // Legacy rows created before stages existed only carry the bracket tag.
-        return Number(match.stage_id || 0) === 0 && String(match.bracket || '').toLowerCase() === 'knockout';
+        return String(match.bracket || '').toLowerCase() === 'knockout';
     }
 
     function bracketStageKeyFor(match) {
@@ -664,8 +694,34 @@ require_once __DIR__ . '/includes/league_header.php';
         return 'legacy-' + (legacyName !== '' ? legacyName.replace(/[^a-z0-9]+/g, '-') : 'bracket');
     }
 
-    function bracketStagesFromSchedule(matches) {
+    function bracketStageKeyForId(id) {
+        return 'stage-' + Number(id);
+    }
+
+    function bracketStagesFromSchedule(matches, catalog) {
         const stages = {};
+
+        // The server catalog lists bracket stages from the structure skeleton,
+        // so an empty knockout stage is selector-visible before its draw.
+        (catalog || []).forEach(function (stage) {
+            const id = Number(stage.id || 0);
+            if (!id) return;
+            const key = bracketStageKeyForId(id);
+            stages[key] = {
+                key: key,
+                name: String(stage.name || ('Stage ' + id)),
+                format: String(stage.format || '').toLowerCase(),
+                order: Number(stage.order || 0),
+                groups: Array.isArray(stage.groups) ? stage.groups : [],
+                qualifiers: Number(stage.qualifiers || 0),
+                teamCount: Number(stage.team_count || 0),
+                entries: Number(stage.entries || 0),
+                bracketReset: !!stage.bracket_reset,
+                slots: 0,
+                matches: 0
+            };
+        });
+
         (matches || []).forEach(function (match) {
             if (!isBracketMatch(match)) return;
             const key = bracketStageKeyFor(match);
@@ -677,18 +733,29 @@ require_once __DIR__ . '/includes/league_header.php';
                     key: key,
                     name: stageName,
                     format: String(match.stage_format || '').toLowerCase(),
+                    order: Number(match.stage_order || 9999),
+                    groups: [],
+                    qualifiers: 0,
+                    teamCount: 0,
+                    entries: 0,
+                    bracketReset: false,
                     slots: 0,
                     matches: 0
                 };
             }
             stages[key].slots += 1;
             if (!isByeMatch(match)) stages[key].matches += 1;
+            if (!stages[key].format && match.stage_format) {
+                stages[key].format = String(match.stage_format).toLowerCase();
+            }
         });
+
+        const idOf = function (key) {
+            return key.indexOf('stage-') === 0 ? Number(key.slice(6)) : 0;
+        };
         return Object.keys(stages).map(function (key) { return stages[key]; })
             .sort(function (a, b) {
-                const idOf = function (key) {
-                    return key.indexOf('stage-') === 0 ? Number(key.slice(6)) : 0;
-                };
+                if (a.order !== b.order) return a.order - b.order;
                 return idOf(a.key) - idOf(b.key);
             });
     }
@@ -713,18 +780,27 @@ require_once __DIR__ . '/includes/league_header.php';
             return;
         }
 
-        const stages = bracketStagesFromSchedule(scheduleState.bracketMatches);
+        const stages = bracketStagesFromSchedule(scheduleState.bracketMatches, scheduleState.bracketStages);
         if (!stages.length) {
             if (scheduleEls.bracketStageBar) scheduleEls.bracketStageBar.innerHTML = '';
             container.innerHTML = bracketEmptyState(
-                '<strong>No knockout bracket yet.</strong> The bracket appears here once the organizer publishes the playoff fixtures.',
+                '<strong>No knockout bracket is set up.</strong> This competition does not have a bracket stage yet.',
                 'bi-diagram-3'
             );
             return;
         }
 
+        if (!scheduleState.bracketStageKey) {
+            try {
+                scheduleState.bracketStageKey = window.sessionStorage.getItem('lmsBracketStage:' + leagueId) || '';
+            } catch (error) {
+                scheduleState.bracketStageKey = '';
+            }
+        }
         if (!stages.some(function (stage) { return stage.key === scheduleState.bracketStageKey; })) {
-            scheduleState.bracketStageKey = stages[0].key;
+            // Prefer a drawn bracket over an earlier empty knockout stage.
+            const drawnStage = stages.find(function (stage) { return stage.slots > 0; });
+            scheduleState.bracketStageKey = (drawnStage || stages[0]).key;
         }
         const activeStage = stages.find(function (stage) { return stage.key === scheduleState.bracketStageKey; }) || stages[0];
 
@@ -734,7 +810,9 @@ require_once __DIR__ . '/includes/league_header.php';
                 const formatLabel = stage.format === 'double_elimination'
                     ? 'Double elimination'
                     : (stage.format === 'single_elimination' ? 'Single elimination' : 'Knockout');
-                const countLabel = stage.matches + (stage.matches === 1 ? ' match' : ' matches');
+                const countLabel = stage.slots === 0
+                    ? 'not drawn yet'
+                    : stage.matches + (stage.matches === 1 ? ' match' : ' matches');
                 return '<button type="button" class="sch-bracket-stage-pill' + (active ? ' is-active' : '') + '"' +
                     ' data-bracket-stage="' + escapeHtml(stage.key) + '"' +
                     ' aria-pressed="' + (active ? 'true' : 'false') + '"' +
@@ -747,6 +825,10 @@ require_once __DIR__ . '/includes/league_header.php';
         const stageMatches = scheduleState.bracketMatches.filter(function (match) {
             return isBracketMatch(match) && bracketStageKeyFor(match) === activeStage.key;
         });
+        if (!stageMatches.length) {
+            container.innerHTML = renderBracketSkeleton(activeStage);
+            return;
+        }
         container.innerHTML = renderBracketStage(stageMatches);
     }
 
@@ -758,16 +840,17 @@ require_once __DIR__ . '/includes/league_header.php';
     }
 
     function bracketMatchSide(match) {
-        return String(match.bracket_side || '').toLowerCase() || 'winners';
+        return BracketCore.bracketMatchSide(match);
     }
 
     function renderBracketStage(matches) {
+        const format = matches.length ? String(matches[0].stage_format || '') : '';
         const sides = ['winners', 'losers', 'grand_final', 'consolation'].filter(function (side) {
             return matches.some(function (match) { return bracketMatchSide(match) === side; });
         });
 
         // Single elimination (or one side only): one clean tree, no section head.
-        if (sides.length <= 1) return renderBracketRounds(matches);
+        if (sides.length <= 1) return renderBracketRounds(matches, sides[0] || '', format);
 
         const sections = [
             { key: 'winners', label: 'Winners bracket', icon: 'bi-arrow-up-right-circle' },
@@ -787,12 +870,12 @@ require_once __DIR__ . '/includes/league_header.php';
                     '<i class="bi ' + section.icon + '" aria-hidden="true"></i>' + section.label +
                     '<span>' + subset.length + ' fixture' + (subset.length === 1 ? '' : 's') + '</span>' +
                 '</div>' +
-                renderBracketRounds(subset) +
+                renderBracketRounds(subset, section.key, format) +
             '</div>';
         });
         return html;
     }
-    function renderBracketRounds(matches) {
+    function renderBracketRounds(matches, side, format) {
         const byRound = {};
         matches.forEach(function (match) {
             const round = Number(match.round || 1) || 1;
@@ -811,6 +894,12 @@ require_once __DIR__ . '/includes/league_header.php';
         });
         const rounds = roundNumbers.map(function (round) { return byRound[round]; });
         const baseRows = rounds[0].length;
+        const groupNames = {};
+        matches.forEach(function (match) {
+            const name = String(match.stage_group_name || '').trim();
+            if (name !== '') groupNames[name] = true;
+        });
+        const showGroup = Object.keys(groupNames).length > 1;
 
         // A classic bracket halves every round. A custom multi-pool playoff can
         // skip a size, so fall back to plain columns instead of misaligning the
@@ -822,8 +911,8 @@ require_once __DIR__ . '/includes/league_header.php';
         if (!canSpan) {
             return '<div class="sch-bracket-columns">' + rounds.map(function (list, index) {
                 return '<div class="sch-bracket-column">' +
-                    '<div class="sch-bracket-column-head">' + bracketRoundLabel(rounds.length, index + 1) + '</div>' +
-                    list.map(function (match) { return bracketCard(match, index + 1, rounds.length); }).join('') +
+                    '<div class="sch-bracket-column-head">' + bracketRoundLabel(rounds.length, index + 1, side, format) + '</div>' +
+                    list.map(function (match) { return bracketCard(match, index + 1, rounds.length, side, format, showGroup); }).join('') +
                 '</div>';
             }).join('') + '</div>';
         }
@@ -833,7 +922,7 @@ require_once __DIR__ . '/includes/league_header.php';
             '<thead><tr>';
         rounds.forEach(function (list, index) {
             html += '<th scope="col"' + (index === rounds.length - 1 ? ' class="is-final"' : '') + '>' +
-                bracketRoundLabel(rounds.length, index + 1) +
+                bracketRoundLabel(rounds.length, index + 1, side, format) +
             '</th>';
         });
         html += '</tr></thead><tbody>';
@@ -849,7 +938,7 @@ require_once __DIR__ . '/includes/league_header.php';
                 const classes = 'sch-bracket-cell' + (feeds ? ' has-feeders' : '')
                     + (index === rounds.length - 1 ? ' is-final' : '');
                 html += '<td rowspan="' + span + '" class="' + classes + '">' +
-                    bracketCard(match, index + 1, rounds.length) +
+                    bracketCard(match, index + 1, rounds.length, side, format, showGroup) +
                 '</td>';
             });
             html += '</tr>';
@@ -859,15 +948,52 @@ require_once __DIR__ . '/includes/league_header.php';
     }
 
     function compareBracketMatches(a, b) {
-        const aNode = String(a.node_key || '').trim();
-        const bNode = String(b.node_key || '').trim();
-        if (aNode !== '' && bNode !== '' && aNode !== bNode) {
-            return aNode.localeCompare(bNode, undefined, { numeric: true, sensitivity: 'base' });
-        }
-        return Number(a.id || 0) - Number(b.id || 0);
+        return BracketCore.compareMatches(a, b);
     }
 
-    function bracketCard(match, roundNumber, roundCount) {
+    // ---- Pre-draw skeleton ------------------------------------------------
+    function bracketSkeletonSize(entries) {
+        return BracketCore.skeletonSize(entries);
+    }
+
+    function bracketSkeletonWinnersSizes(size) {
+        return BracketCore.winnersSizes(size);
+    }
+
+    function bracketSkeletonLosersSizes(size) {
+        return BracketCore.losersSizes(size);
+    }
+
+    function bracketSkeletonMatches(stage, sizes, side, format, counter) {
+        return BracketCore.skeletonMatches(stage, sizes, side, format, counter);
+    }
+
+    function renderBracketSkeleton(stage) {
+        const expected = Number(stage.entries || 0);
+        const size = bracketSkeletonSize(expected);
+        const format = String(stage.format || 'single_elimination');
+        const counter = { value: 0 };
+        let matches = bracketSkeletonMatches(stage, bracketSkeletonWinnersSizes(size), 'winners', format, counter);
+        if (format === 'double_elimination') {
+            matches = matches.concat(bracketSkeletonMatches(stage, bracketSkeletonLosersSizes(size), 'losers', format, counter));
+            matches = matches.concat(bracketSkeletonMatches(stage, [1], 'grand_final', format, counter));
+            if (stage.bracketReset) {
+                const resetFinal = bracketSkeletonMatches(stage, [1], 'grand_final', format, counter);
+                if (resetFinal.length) resetFinal[0].round = 2;
+                matches = matches.concat(resetFinal);
+            }
+        }
+
+        const entrants = expected >= 2
+            ? 'Expected entrants: <strong>' + expected + '</strong>.'
+            : 'Entrants will be confirmed after the preceding stage.';
+        return '<p class="sch-bracket-preview-note"><i class="bi bi-info-circle" aria-hidden="true"></i> '
+            + 'Preview — <strong>' + escapeHtml(stage.name) + '</strong> has not been drawn yet. '
+            + entrants + '</p>'
+            + renderBracketStage(matches);
+    }
+
+    function bracketCard(match, roundNumber, roundCount, side, format, showGroup) {
         const bye = isByeMatch(match);
         const published = isPublishedMatch(match);
         const status = String(match.status || '').toLowerCase();
@@ -875,30 +1001,38 @@ require_once __DIR__ . '/includes/league_header.php';
         const classes = ['sch-bracket-match'];
         if (bye) classes.push('is-bye');
         else if (isTbd) classes.push('is-tbd');
-        if (!published && !bye) classes.push('is-pending');
+        if (match.is_skeleton) classes.push('is-skeleton');
+        if (!published && !bye && !match.is_skeleton) classes.push('is-pending');
         if (published && status === 'completed') classes.push('is-complete');
 
-        const title = bracketMatchTitle(match, roundNumber, roundCount);
+        const groupLabel = showGroup ? String(match.stage_group_name || '').trim() : '';
+        if (groupLabel !== '') classes.push('has-group');
+
+        const title = bracketMatchTitle(match, roundNumber, roundCount, side, format);
         return '<div class="' + classes.join(' ') + '" title="' + escapeHtml(title) + '" aria-label="' + escapeHtml(title) + '">' +
+            (groupLabel !== '' ? '<span class="sch-bracket-group">' + escapeHtml(groupLabel) + '</span>' : '') +
             bracketSide(match, 'a') +
             bracketSide(match, 'b') +
         '</div>';
     }
 
     function bracketSide(match, side) {
-        const bye = isByeMatch(match);
-        const isByeSlot = bye && side === 'b';
+        const isMatchBye = BracketCore.isByeMatch(match);
+        // A bye can hold the surviving team on either side; the empty side is
+        // the bye and the occupied side is already through.
+        const byeSide = BracketCore.byeSide(match);
+        const isByeSlot = byeSide === side;
         const name = String((side === 'a' ? match.team_a_name : match.team_b_name) || '').trim();
         const teamId = Number(side === 'a' ? match.team_a : match.team_b) || 0;
         const status = String(match.status || '').toLowerCase();
         const completed = isPublishedMatch(match) && status === 'completed';
         const winner = Number(match.winner || 0);
-        const isWinner = !bye && completed && winner > 0 && teamId === winner;
-        const advanced = bye && side === 'a';
-        const isTbd = !bye && teamId === 0;
+        const isWinner = !isMatchBye && completed && winner > 0 && teamId === winner;
+        const advanced = isMatchBye && byeSide !== null && side !== byeSide;
+        const isTbd = !isMatchBye && teamId === 0;
 
         const rawScore = side === 'a' ? match.a_score : match.b_score;
-        const scoreText = completed && !bye
+        const scoreText = completed && !isMatchBye
             ? (rawScore === null || rawScore === undefined || String(rawScore).trim() === '' ? '0' : String(rawScore))
             : '';
 
@@ -906,9 +1040,9 @@ require_once __DIR__ . '/includes/league_header.php';
         if (isWinner || advanced) rowClasses.push('is-winner');
         if (isByeSlot) rowClasses.push('is-bye');
         else if (isTbd) rowClasses.push('is-tbd');
-        if (completed && !bye && winner > 0 && !isWinner) rowClasses.push('is-loser');
+        if (completed && !isMatchBye && winner > 0 && !isWinner) rowClasses.push('is-loser');
 
-        const displayName = name !== '' ? name : (isByeSlot ? 'BYE' : 'TBD');
+        const displayName = isByeSlot ? 'BYE' : (name !== '' ? name : 'TBD');
         return '<div class="' + rowClasses.join(' ') + '">' +
             '<span class="sch-bracket-name">' + escapeHtml(displayName) + '</span>' +
             (isWinner || advanced ? '<i class="bi bi-check2 sch-bracket-check" aria-label="Winner" title="Winner"></i>' : '') +
@@ -916,26 +1050,24 @@ require_once __DIR__ . '/includes/league_header.php';
         '</div>';
     }
 
-    function bracketRoundLabel(roundCount, roundNumber) {
-        const fromEnd = roundCount - roundNumber + 1;
-        if (fromEnd === 1) return 'Final';
-        if (fromEnd === 2) return 'Semifinal';
-        if (fromEnd === 3) return 'Quarterfinal';
-        if (fromEnd === 4) return 'Round of 16';
-        return 'Round of ' + Math.pow(2, fromEnd);
+    function bracketRoundLabel(roundCount, roundNumber, side, format) {
+        return BracketCore.roundLabel(roundCount, roundNumber, side, format);
     }
 
-    function bracketMatchTitle(match, roundNumber, roundCount) {
-        const teamA = teamName(match.team_a_name);
-        const teamB = isByeMatch(match) ? 'BYE' : teamName(match.team_b_name);
+    function bracketMatchTitle(match, roundNumber, roundCount, side, format) {
+        const bye = isByeMatch(match);
+        const teamA = bye && Number(match.team_a) === 0 ? 'BYE' : teamName(match.team_a_name);
+        const teamB = bye && Number(match.team_b) === 0 ? 'BYE' : teamName(match.team_b_name);
         const date = String(match.date || '').trim();
         const time = String(match.time || '').trim();
+        const group = String(match.stage_group_name || '').trim();
         const when = [date !== '' ? formatDate(date) : '', time !== '' ? formatTime(time) : '']
             .filter(function (part) { return part !== ''; })
             .join(' \u00b7 ');
-        return teamA + ' vs ' + teamB + ' \u2014 ' + bracketRoundLabel(roundCount, roundNumber)
+        return teamA + ' vs ' + teamB + ' \u2014 ' + bracketRoundLabel(roundCount, roundNumber, side, format)
+            + (group !== '' ? ' \u2014 ' + group : '')
             + (when !== '' ? ' \u2014 ' + when : '')
-            + (!isPublishedMatch(match) && !isByeMatch(match) ? ' \u2014 Pending' : '');
+            + (!isPublishedMatch(match) && !isByeMatch(match) && !match.is_skeleton ? ' \u2014 Pending' : '');
     }
 
 

@@ -337,6 +337,17 @@ class TournamentEngineTest extends TestCase
         $this->assertArrayNotHasKey('placement', $formats, 'Placement is not a selectable competition format');
     }
 
+    public function testStageSettingsDecodeTheBracketResetOption(): void
+    {
+        $this->assertSame([], stageSettings([]));
+        $this->assertSame([], stageSettings(['settings_json' => '{broken']));
+        $this->assertSame(['bracket_reset' => 1], stageSettings(['settings_json' => '{"bracket_reset":1}']));
+        $this->assertSame(1, stageSetting(['settings_json' => '{"bracket_reset":1}'], 'bracket_reset', 0));
+        $this->assertSame(0, stageSetting([], 'bracket_reset', 0));
+        $this->assertSame('Grand Final', bracketRoundLabel(1, 1, 'grand_final'));
+        $this->assertSame('Grand Final reset', bracketRoundLabel(2, 2, 'grand_final'));
+    }
+
     public function testStageFormatFallsBackToTheStageType(): void
     {
         $this->assertSame('single_elimination', stageFormat(['stage_type' => 'knockout']));

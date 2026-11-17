@@ -78,11 +78,11 @@ $setupStructureShortLabel = $stageCount === 0
    automatically (seedStageGroupsFromApprovedTeams), which is why setup can be
    skipped altogether. */
 $setupNextStepByStructure = [
-    'round_robin'          => 'Generate the round robin on the <em>Schedule</em> page — <em>Group A</em> is seeded for you.',
-    'swiss_system'         => 'Generate the first Swiss round on the <em>Schedule</em> page; equal records are paired each round.',
+    'round_robin'          => 'Generate the round robin in the <em>Matches</em> step — <em>Group A</em> is seeded for you.',
+    'swiss_system'         => 'Generate the first Swiss round in the <em>Matches</em> step; equal records are paired each round.',
     'round_robin_playoffs' => 'Generate the round robin, then use <em>Create playoffs</em> after the last league match.',
-    'single_elimination'   => 'Generate the seeded bracket on the <em>Schedule</em> page — byes are handled for you.',
-    'double_elimination'   => 'Generate the double-elimination bracket on the <em>Schedule</em> page; losers drop into the losers bracket.',
+    'single_elimination'   => 'Generate the seeded bracket in the <em>Matches</em> step — byes are handled for you.',
+    'double_elimination'   => 'Generate the double-elimination bracket in the <em>Matches</em> step; losers drop into the losers bracket.',
     'groups_knockout'      => 'Generate the group stage, then use <em>Advance qualifiers</em> to fill the knockout.',
     'pools_playoffs'       => 'Generate each bracket, then advance the qualifiers into the crossover pools.',
     'custom'               => 'Add a stage below, or build the matches by hand on the Schedule page.',

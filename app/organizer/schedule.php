@@ -82,6 +82,31 @@ foreach (getLeagueStages($conn, $leagueId) as $stageRow) {
 }
 $stageTypeLabels = stageTypeLabels();
 $hasStages = !empty($leagueStages);
+// Bracket stages come from the structure skeleton, so a preset's knockout
+// stage is listed (as "not drawn yet") before any fixture exists.
+$bracketStageCatalog = leagueBracketStageCatalog($leagueStages, (int)$approvedCount);
+$hasBracketStage = !empty($bracketStageCatalog);
+if (!$hasBracketStage) {
+    // Pre-stage legacy rows are not in the catalog but the bracket view still
+    // supports them by grouping on the legacy stage tag.
+    $legacyBracketStmt = $conn->prepare("SELECT 1
+                                          FROM tbl_schedule s
+                                          LEFT JOIN tbl_league_stage st
+                                            ON st.id = s.stage_id
+                                           AND st.league_id = s.league_id
+                                           AND st.is_active = 1
+                                          WHERE s.league_id = ?
+                                            AND s.bracket = 'knockout'
+                                            AND st.id IS NULL
+                                            AND (s.is_archived = 0 OR s.is_archived IS NULL)
+                                          LIMIT 1");
+    if ($legacyBracketStmt) {
+        $legacyBracketStmt->bind_param('i', $leagueId);
+        $legacyBracketStmt->execute();
+        $hasBracketStage = (bool)$legacyBracketStmt->get_result()->fetch_row();
+        $legacyBracketStmt->close();
+    }
+}
 
     include 'includes/header.php';
 ?>
@@ -264,6 +289,9 @@ $hasStages = !empty($leagueStages);
     .sc-bracket-section.is-losers .sc-bracket-section-head { color:#b45309; }
     .sc-bracket-section.is-grand_final .sc-bracket-section-head { color:#0f7b4f; }
     .sc-bracket-section.is-grand_final .sc-bracket { min-width:320px; }
+    .sc-bracket-preview-note { margin:0 0 12px; font-size:12px; color:#64748b; }
+    .sc-bracket-preview-note i { margin-right:4px; color:#2563eb; }
+    .sc-bracket-preview-note strong { color:#334155; }
     .sc-bracket-scroll { overflow-x:auto; padding-bottom:4px; }
     .sc-bracket { width:100%; min-width:640px; border-collapse:separate; border-spacing:0; }
     .sc-bracket th { padding:0 0 12px; font-size:10px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#64748b; text-align:center; white-space:nowrap; }
@@ -298,6 +326,7 @@ $hasStages = !empty($leagueStages);
     .sc-bracket-chip.is-bye { background:#e8edf7; color:#5c6b82; }
     .sc-bracket-chip.is-tbd { background:#f1f5f9; color:#94a3b8; }
     .sc-bracket-chip.is-cancelled { background:#fee2e2; color:#991b1b; }
+    .sc-bracket-chip.is-group { background:#eef3f9; color:#5c6b82; }
     .sc-bracket-date { font-size:10px; color:#94a3b8; }
     .sc-bracket-columns { display:flex; gap:22px; overflow-x:auto; padding-bottom:4px; }
     .sc-bracket-column { flex:1 0 200px; display:flex; flex-direction:column; gap:10px; }
@@ -360,7 +389,9 @@ $hasStages = !empty($leagueStages);
                 SUM(CASE WHEN conflict_detected = 1 THEN 1 ELSE 0 END) AS conflicts
          FROM tbl_schedule
          WHERE league_id = ? AND (is_archived = 0 OR is_archived IS NULL)
-           AND NOT (team_b = 0 AND seed_b = 'BYE')"
+           AND NOT (LOWER(status) = 'completed'
+                    AND (team_a = 0 OR team_b = 0)
+                    AND NOT (team_a = 0 AND team_b = 0))"
     );
     $statsStmt->bind_param('i', $leagueId);
     $statsStmt->execute();
@@ -463,8 +494,10 @@ $hasStages = !empty($leagueStages);
                                     </select>
                                     <div class="sc-view-toggle" role="group" aria-label="Schedule view">
                                         <button type="button" class="btn active" id="btnTableView"><i class="bi bi-table"></i> Table</button>
-                                        <button type="button" class="btn" id="btnCalendarView"><i class="bi bi-calendar3"></i> Calendar</button>
+                                        <?php if ($hasBracketStage): ?>
                                         <button type="button" class="btn" id="btnBracketView"><i class="bi bi-diagram-3"></i> Bracket</button>
+                                        <?php endif; ?>
+                                        <button type="button" class="btn" id="btnCalendarView"><i class="bi bi-calendar3"></i> Calendar</button>
                                     </div>
                                     <button type="button" class="sc-refresh-btn" id="scRefreshBtn"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                                 </div>
@@ -788,9 +821,12 @@ $hasStages = !empty($leagueStages);
     <!-- FullCalendar (v6 global bundle) powers the Calendar view below.
          It must load after jQuery, which includes/footer.php pulls in. -->
     <script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/fullcalendar/6.1.10/index.global.min.js"></script>
+    <script src="<?= htmlspecialchars($lmsBase) ?>/assets/js/bracket-core.js"></script>
 
     <script>
+        const BracketCore = window.LmsBracketCore;
         const leagueId = <?php echo htmlspecialchars(json_encode($leagueId), ENT_QUOTES, 'UTF-8'); ?>;
+        const leagueBracketStages = <?= json_encode($bracketStageCatalog, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE) ?>;
         <?php
             $protestWindowMinutes = max(1, (int)(getLeagueSportProfile($conn, (int)$leagueId)['protest_window_minutes'] ?? 1440));
             $protestWindowText = $protestWindowMinutes >= 1440
@@ -804,6 +840,7 @@ $hasStages = !empty($leagueStages);
         // The schedule is fetched once; search and status filters only re-render
         // the boards from this cache, so filtering never costs an extra request.
         let latestSchedule = [];
+        let scheduleLoaded = false;
         const scheduleFilter = { term: '', status: 'all' };
 
         // ---- View toggle: table / calendar / bracket ---------------------------
@@ -816,6 +853,11 @@ $hasStages = !empty($leagueStages);
         };
 
         function showScheduleView(viewKey) {
+            // The Bracket toggle is only rendered when the structure has a
+            // bracket stage; a deep link must not hide the other views otherwise.
+            if (viewKey === 'bracket' && !document.getElementById('btnBracketView')) {
+                viewKey = 'table';
+            }
             Object.keys(scheduleViews).forEach(function (key) {
                 const view = scheduleViews[key];
                 const button = document.getElementById(view.button);
@@ -1029,7 +1071,8 @@ $hasStages = !empty($leagueStages);
             // Deep link: schedule.php?id=X#bracket (or ?view=bracket) opens the
             // bracket view. It is re-drawn by loadSchedule() once data arrives.
             const initialView = new URLSearchParams(window.location.search).get('view');
-            if (initialView === 'bracket' || window.location.hash === '#bracket') {
+            if ((initialView === 'bracket' || window.location.hash === '#bracket')
+                && document.getElementById('btnBracketView')) {
                 showScheduleView('bracket');
             }
             // Init Bootstrap tooltips
@@ -1089,7 +1132,7 @@ $hasStages = !empty($leagueStages);
         // board lists them so the whole bracket is visible, but they are not
         // playable matches and never carry scheduling actions or counters.
         function isByeMatch(match) {
-            return Number(match.team_b) === 0 && String(match.seed_b || '').toUpperCase() === 'BYE';
+            return BracketCore.isByeMatch(match);
         }
 
         function updateScheduleCount(count) {
@@ -1109,6 +1152,7 @@ $hasStages = !empty($leagueStages);
 
         function displaySchedule(schedule) {
             latestSchedule = Array.isArray(schedule) ? schedule : [];
+            scheduleLoaded = true;
             const container = document.getElementById('scheduleTablesContainer');
             const filtered = latestSchedule.filter(matchMatchesFilter);
             // Byes are bracket slots, not matches: keep the badge in step with the
@@ -1208,8 +1252,7 @@ $hasStages = !empty($leagueStages);
                 ? `<button type="button" class="league-icon-btn league-action-warn" title="Log protest / reopen result" aria-label="Log protest or reopen result" onclick="protestResult(${match.id})"><i class="bi bi-flag" aria-hidden="true"></i></button>`
                 : `<button type="button" class="league-icon-btn league-action-warn" title="Reschedule" aria-label="Reschedule" onclick="editMatch(${match.id},'${escapeQuotes(match.date || '')}','${escapeQuotes(match.time || '')}','${escapeQuotes(match.venue || '')}', '${escapeQuotes(match.committee_user_id || '')}')"><i class="bi bi-calendar-event" aria-hidden="true"></i></button>`;
             // Published matches render nothing extra here so the Reschedule and
-            // Archive icon buttons sit side by side. Drafts get Publish once both
-            // teams are known; a TBD row waits for the previous round.
+            // Archive icon buttons sit side by side. Drafts still get Publish.
             const publishButton = match.published_at || isTbd
                 ? ''
                 : `<button type="button" class="league-icon-btn league-action-ok" title="Publish" aria-label="Publish" onclick="publishMatch(${match.id})"><i class="bi bi-send-fill" aria-hidden="true"></i></button>`;
@@ -1348,44 +1391,157 @@ $hasStages = !empty($leagueStages);
         // Draws the selected knockout stage as one column per round. A later-round
         // card spans the rows of its two feeders, so byes and TBD slots stay aligned
         // with the bracket order the generator (and progression) wrote.
-        let bracketStageChoice = 0;
+        let bracketStageChoice = '';
+        try {
+            const savedBracketStage = String(window.sessionStorage.getItem('lmsBracketStage:' + leagueId) || '');
+            if (savedBracketStage !== '') {
+                // Older versions stored the numeric stage id; new keys are
+                // "stage-<id>" (and legacy rows use "legacy-<name>").
+                bracketStageChoice = savedBracketStage.indexOf('-') !== -1
+                    ? savedBracketStage
+                    : 'stage-' + savedBracketStage;
+            }
+        } catch (error) {
+            // Session storage is a convenience; the first stage is a fine default.
+        }
 
-        function knockoutStagesFromSchedule(schedule) {
+        function bracketStageKeyFor(match) {
+            const stageId = Number(match.stage_id || 0);
+            if (stageId > 0) return 'stage-' + stageId;
+            const legacyName = String(match.stage || match.stage_name || '').trim().toLowerCase();
+            return 'legacy-' + (legacyName !== '' ? legacyName.replace(/[^a-z0-9]+/g, '-') : 'bracket');
+        }
+
+        /**
+         * Bracket stages for the selector: the structure catalog first (so a
+         * preset's knockout stage exists before its draw), then any bracket rows
+         * the catalog does not know about, including stage-less legacy rows.
+         */
+        function knockoutStagesFromSchedule(schedule, catalog) {
             const stages = {};
-            schedule.forEach(function (match) {
-                // A bracket stage is a knockout stage, or any stage whose format
-                // is single / double elimination (the structure engine writes it).
-                const isBracket = String(match.stage_type || '') === 'knockout'
-                    || ['single_elimination', 'double_elimination'].indexOf(String(match.stage_format || '')) !== -1;
-                if (!isBracket) return;
-                const id = Number(match.stage_id || 0);
+            (catalog || []).forEach(function (stage) {
+                const id = Number(stage.id || 0);
                 if (!id) return;
-                if (!stages[id]) {
-                    stages[id] = {
+                const key = 'stage-' + id;
+                stages[key] = {
+                    key: key,
+                    id: id,
+                    name: String(stage.name || ('Stage ' + id)),
+                    format: String(stage.format || 'single_elimination'),
+                    order: Number(stage.order || 0),
+                    groups: Array.isArray(stage.groups) ? stage.groups : [],
+                    qualifiers: Number(stage.qualifiers || 0),
+                    teamCount: Number(stage.team_count || 0),
+                    entries: Number(stage.entries || 0),
+                    bracketReset: !!stage.bracket_reset,
+                    slots: 0,
+                    matches: 0
+                };
+            });
+
+            (schedule || []).forEach(function (match) {
+                // A bracket stage is a knockout stage, or a legacy row with no
+                // stage type whose format / bracket tag says knockout.
+                const stageType = String(match.stage_type || '').toLowerCase();
+                const stageFormat = String(match.stage_format || '').toLowerCase();
+                const isBracket = stageType === 'knockout'
+                    || (stageType === '' && ['single_elimination', 'double_elimination'].indexOf(stageFormat) !== -1)
+                    || (stageType === '' && String(match.bracket || '').toLowerCase() === 'knockout');
+                if (!isBracket) return;
+
+                const id = Number(match.stage_id || 0);
+                const key = bracketStageKeyFor(match);
+                if (!stages[key]) {
+                    const legacyName = String(match.stage || '').trim();
+                    stages[key] = {
+                        key: key,
                         id: id,
-                        name: match.stage_name || ('Stage ' + id),
+                        name: match.stage_name || legacyName || (id ? ('Stage ' + id) : 'Playoff bracket'),
                         format: match.stage_format || 'single_elimination',
+                        order: Number(match.stage_order || 9999),
+                        groups: [],
+                        qualifiers: 0,
+                        teamCount: 0,
+                        entries: 0,
+                        bracketReset: false,
+                        slots: 0,
                         matches: 0
                     };
                 }
-                stages[id].matches += 1;
+                stages[key].slots += 1;
+                if (!isByeMatch(match)) stages[key].matches += 1;
+                if (!stages[key].format && match.stage_format) {
+                    stages[key].format = String(match.stage_format);
+                }
             });
+
             return Object.keys(stages).map(function (key) { return stages[key]; })
-                .sort(function (a, b) { return a.id - b.id; });
+                .sort(function (a, b) {
+                    if (a.order !== b.order) return a.order - b.order;
+                    if (a.id !== b.id) return a.id - b.id;
+                    return String(a.name).localeCompare(String(b.name));
+                });
         }
 
-        function bracketRoundLabel(roundCount, roundNumber) {
-            const fromEnd = roundCount - roundNumber + 1;
-            if (fromEnd === 1) return 'Final';
-            if (fromEnd === 2) return 'Semifinal';
-            if (fromEnd === 3) return 'Quarterfinal';
-            if (fromEnd === 4) return 'Round of 16';
-            return 'Round of ' + Math.pow(2, fromEnd);
+        function bracketRoundLabel(roundCount, roundNumber, side, format) {
+            return BracketCore.roundLabel(roundCount, roundNumber, side, format);
+        }
+
+        function compareBracketMatches(a, b) {
+            return BracketCore.compareMatches(a, b);
+        }
+
+        // ---- Pre-draw skeleton ------------------------------------------------
+        // The same geometry as the engine, but only TBD cards. It lets the
+        // organizer see the bracket shape before Setup generates the draw.
+        function bracketSkeletonSize(entries) {
+            return BracketCore.skeletonSize(entries);
+        }
+
+        function bracketSkeletonWinnersSizes(size) {
+            return BracketCore.winnersSizes(size);
+        }
+
+        function bracketSkeletonLosersSizes(size) {
+            return BracketCore.losersSizes(size);
+        }
+
+        function bracketSkeletonMatches(stage, sizes, side, format, counter) {
+            return BracketCore.skeletonMatches(stage, sizes, side, format, counter);
+        }
+
+        function renderBracketSkeleton(stage) {
+            const expected = Number(stage.entries || 0);
+            const size = bracketSkeletonSize(expected);
+            const format = String(stage.format || 'single_elimination');
+            const counter = { value: 0 };
+            let matches = bracketSkeletonMatches(stage, bracketSkeletonWinnersSizes(size), 'winners', format, counter);
+            if (format === 'double_elimination') {
+                matches = matches.concat(bracketSkeletonMatches(stage, bracketSkeletonLosersSizes(size), 'losers', format, counter));
+                matches = matches.concat(bracketSkeletonMatches(stage, [1], 'grand_final', format, counter));
+                if (stage.bracketReset) {
+                    const resetFinal = bracketSkeletonMatches(stage, [1], 'grand_final', format, counter);
+                    if (resetFinal.length) resetFinal[0].round = 2;
+                    matches = matches.concat(resetFinal);
+                }
+            }
+
+            const entrants = expected >= 2
+                ? 'Expected entrants: <strong>' + expected + '</strong>.'
+                : 'Entrants will be confirmed when the preceding stage is promoted.';
+            const note = '<p class="sc-bracket-preview-note"><i class="bi bi-info-circle" aria-hidden="true"></i> '
+                + 'Bracket preview — <strong>' + escapeHtml(stage.name) + '</strong> has not been drawn yet. '
+                + entrants + ' Generate the draw in <strong>Setup &rarr; Matches</strong>.</p>';
+
+            return note + renderBracketStage(matches);
         }
 
         function bracketSide(match, side) {
-            const isMatchBye = isByeMatch(match);
-            const bye = side === 'b' && isMatchBye;
+            const isMatchBye = BracketCore.isByeMatch(match);
+            // A bye row can hold the surviving team on either side (the legacy
+            // generator normalises it to side A; older graph rows may not).
+            const byeSide = BracketCore.byeSide(match);
+            const bye = byeSide === side;
             const seed = side === 'a' ? match.seed_a : match.seed_b;
             const name = side === 'a' ? match.team_a_name : match.team_b_name;
             const teamId = Number(side === 'a' ? match.team_a : match.team_b);
@@ -1395,19 +1551,19 @@ $hasStages = !empty($leagueStages);
             // The losing side of a completed fixture is tinted red.
             const isLoser = !isMatchBye && completed && winner > 0 && teamId > 0 && teamId !== winner;
             // A bye team is already through, so tint it like a winner.
-            const advanced = isMatchBye && side === 'a';
+            const advanced = isMatchBye && byeSide !== null && side !== byeSide;
             const score = completed && !isMatchBye ? (side === 'a' ? match.a_score : match.b_score) : '';
             const seedText = seed === null || seed === undefined ? '' : String(seed);
             const showSeed = !bye && seedText !== '';
             return `<div class="sc-bracket-side${isWinner || advanced ? ' is-winner' : ''}${isLoser ? ' is-loser' : ''}${bye ? ' is-bye' : ''}">
                 ${showSeed ? `<span class="sc-bracket-seed">${escapeHtml(seedText)}</span>` : ''}
-                <span class="sc-bracket-name">${escapeHtml(name || (bye ? 'BYE' : 'TBD'))}</span>
+                <span class="sc-bracket-name">${escapeHtml(bye ? 'BYE' : (name || 'TBD'))}</span>
                 <span class="sc-bracket-score">${score === '' ? '' : escapeHtml(score || 0)}</span>
-                ${isWinner ? '<i class="bi bi-check-circle-fill sc-bracket-check" aria-hidden="true"></i>' : ''}
+                ${isWinner || advanced ? '<i class="bi bi-check-circle-fill sc-bracket-check" aria-hidden="true"></i>' : ''}
             </div>`;
         }
 
-        function bracketCard(match, roundNumber, roundCount) {
+        function bracketCard(match, roundNumber, roundCount, side, format, showGroup) {
             const isMatchBye = isByeMatch(match);
             const status = String(match.status || '').toLowerCase();
             const isTbd = !isMatchBye && Number(match.team_a) === 0 && Number(match.team_b) === 0;
@@ -1421,10 +1577,13 @@ $hasStages = !empty($leagueStages);
             if (!isMatchBye && match.date) {
                 chips.push('<span class="sc-bracket-date">' + escapeHtml(formatScheduleDate(match.date)) + '</span>');
             }
+            if (showGroup && match.stage_group_name) {
+                chips.push('<span class="sc-bracket-chip is-group">' + escapeHtml(match.stage_group_name) + '</span>');
+            }
             const title = isMatchBye
                 ? 'Bye - the team advances automatically'
-                : (match.stage_name || 'Knockout') + ' - ' + bracketRoundLabel(roundCount, roundNumber);
-            const canSchedule = !isMatchBye && status !== 'completed';
+                : (match.stage_name || 'Knockout') + ' - ' + bracketRoundLabel(roundCount, roundNumber, side, format);
+            const canSchedule = !isMatchBye && status !== 'completed' && !match.is_skeleton;
             const scheduleAction = canSchedule
                 ? `<button type="button" class="sc-bracket-action" title="Set date, time, venue and Committee" aria-label="Set date, time, venue and Committee" onclick="editMatch(${match.id},'${escapeQuotes(match.date || '')}','${escapeQuotes(match.time || '')}','${escapeQuotes(match.venue || '')}','${escapeQuotes(match.committee_user_id || '')}')"><i class="bi bi-calendar-event" aria-hidden="true"></i>Schedule</button>`
                 : '';
@@ -1435,7 +1594,11 @@ $hasStages = !empty($leagueStages);
             </div>`;
         }
 
-        function renderBracketRounds(matches, sideTitle) {
+        function bracketMatchSide(match) {
+            return BracketCore.bracketMatchSide(match);
+        }
+
+        function renderBracketRounds(matches, side, format) {
             const byRound = {};
             matches.forEach(function (match) {
                 const round = Number(match.round || 1);
@@ -1448,21 +1611,28 @@ $hasStages = !empty($leagueStages);
                     + '<p>This stage has no fixtures yet. Generate it in <strong>Setup &rarr; Matches</strong>, then refresh.</p></div>';
             }
             roundNumbers.forEach(function (round) {
-                byRound[round].sort(function (a, b) { return Number(a.id) - Number(b.id); });
+                byRound[round].sort(compareBracketMatches);
             });
             const rounds = roundNumbers.map(function (round) { return byRound[round]; });
             const baseRows = rounds[0].length;
+            const groupNames = {};
+            matches.forEach(function (match) {
+                const name = String(match.stage_group_name || '').trim();
+                if (name !== '') groupNames[name] = true;
+            });
+            const showGroup = Object.keys(groupNames).length > 1;
 
             // A classic bracket halves every round. A custom multi-pool playoff can
             // skip a size; draw simple columns instead of misaligned connectors.
-            const canSpan = rounds.every(function (list) {
-                return list.length > 0 && baseRows % list.length === 0;
+            const canSpan = rounds.every(function (list, index) {
+                if (!list.length || baseRows % list.length !== 0) return false;
+                return index === 0 || rounds[index - 1].length === list.length * 2;
             });
             if (!canSpan) {
                 return '<div class="sc-bracket-columns">' + rounds.map(function (list, index) {
                     return '<div class="sc-bracket-column">'
-                        + '<div class="sc-bracket-column-head">' + bracketRoundLabel(rounds.length, index + 1) + '</div>'
-                        + list.map(function (match) { return bracketCard(match, index + 1, rounds.length); }).join('')
+                        + '<div class="sc-bracket-column-head">' + bracketRoundLabel(rounds.length, index + 1, side, format) + '</div>'
+                        + list.map(function (match) { return bracketCard(match, index + 1, rounds.length, side, format, showGroup); }).join('')
                         + '</div>';
                 }).join('') + '</div>';
             }
@@ -1470,7 +1640,7 @@ $hasStages = !empty($leagueStages);
             let html = '<div class="sc-bracket-scroll"><table class="sc-bracket"><thead><tr>';
             rounds.forEach(function (list, index) {
                 html += '<th class="sc-bracket-head' + (index === rounds.length - 1 ? ' is-final' : '') + '">'
-                    + bracketRoundLabel(rounds.length, index + 1) + '</th>';
+                    + bracketRoundLabel(rounds.length, index + 1, side, format) + '</th>';
             });
             html += '</tr></thead><tbody>';
             for (let row = 0; row < baseRows; row++) {
@@ -1484,7 +1654,7 @@ $hasStages = !empty($leagueStages);
                     const className = 'sc-bracket-cell' + (feeds ? ' has-feeders' : '')
                         + (index === rounds.length - 1 ? ' is-final' : '');
                     html += '<td rowspan="' + span + '" class="' + className + '">'
-                        + bracketCard(match, index + 1, rounds.length) + '</td>';
+                        + bracketCard(match, index + 1, rounds.length, side, format, showGroup) + '</td>';
                 });
                 html += '</tr>';
             }
@@ -1493,35 +1663,38 @@ $hasStages = !empty($leagueStages);
         }
 
         /**
-         * Bracket view: a double-elimination stage is drawn as two distinct
-         * sections (winners above, losers below) plus the grand final, exactly
-         * like the traditional side-to-side branch diagram. A single-elimination
-         * stage or a legacy bracket falls back to one round-by-round table.
+         * Bracket view: a double-elimination stage is drawn as three distinct
+         * sections (winners, losers, grand final) plus an optional consolation
+         * section. A single-elimination stage or a legacy bracket falls back to
+         * one round-by-round table.
          */
         function renderBracketStage(matches) {
-            const hasSides = matches.some(function (match) {
-                return match.bracket_side && String(match.bracket_side) !== '';
+            const format = matches.length ? String(matches[0].stage_format || '') : '';
+            const sides = ['winners', 'losers', 'grand_final', 'consolation'].filter(function (side) {
+                return matches.some(function (match) { return bracketMatchSide(match) === side; });
             });
-            if (!hasSides) return renderBracketRounds(matches, '');
+
+            // Single elimination (or one side only): one clean tree, no section head.
+            if (sides.length <= 1) return renderBracketRounds(matches, sides[0] || '', format);
 
             const sections = [
                 { key: 'winners',     label: 'Winners bracket', icon: 'bi-arrow-up-right-circle' },
                 { key: 'losers',      label: 'Losers bracket',  icon: 'bi-arrow-down-right-circle' },
-                { key: 'grand_final', label: 'Grand final',     icon: 'bi-trophy-fill' }
+                { key: 'grand_final', label: 'Grand final',     icon: 'bi-trophy-fill' },
+                { key: 'consolation', label: 'Consolation',     icon: 'bi-award' }
             ];
 
             let html = '';
             sections.forEach(function (section) {
                 const subset = matches.filter(function (match) {
-                    const side = String(match.bracket_side || 'winners');
-                    return side === section.key;
+                    return bracketMatchSide(match) === section.key;
                 });
                 if (!subset.length) return;
                 html += '<div class="sc-bracket-section is-' + section.key + '">'
                     + '<div class="sc-bracket-section-head"><i class="bi ' + section.icon + '" aria-hidden="true"></i> '
                     + section.label
                     + '<span>' + subset.length + ' fixture' + (subset.length === 1 ? '' : 's') + '</span></div>'
-                    + renderBracketRounds(subset, section.label)
+                    + renderBracketRounds(subset, section.key, format)
                     + '</div>';
             });
             return html;
@@ -1532,42 +1705,61 @@ $hasStages = !empty($leagueStages);
             const stageSelect = document.getElementById('scBracketStage');
             if (!container || !stageSelect) return;
 
-            const stages = knockoutStagesFromSchedule(latestSchedule);
+            if (!scheduleLoaded) {
+                // The first AJAX load has not returned yet.
+                stageSelect.innerHTML = '';
+                stageSelect.disabled = true;
+                container.innerHTML = '<div class="lp-empty"><span class="spinner-border text-primary" role="status" aria-hidden="true"></span>'
+                    + '<p class="mt-3">Loading bracket…</p></div>';
+                return;
+            }
+
+            const stages = knockoutStagesFromSchedule(latestSchedule, leagueBracketStages);
             if (!stages.length) {
                 stageSelect.innerHTML = '';
                 stageSelect.disabled = true;
-                if (!latestSchedule.length) {
-                    // The first AJAX load has not returned yet.
-                    container.innerHTML = '<div class="lp-empty"><span class="spinner-border text-primary" role="status" aria-hidden="true"></span>'
-                        + '<p class="mt-3">Loading bracket…</p></div>';
-                    return;
-                }
                 container.innerHTML = '<div class="lp-empty"><i class="bi bi-diagram-3"></i>'
-                    + '<p>A bracket needs a knockout stage. Apply <strong>Single elimination</strong>, '
-                    + '<strong>Double elimination</strong>, <strong>Round robin + playoffs</strong> or '
-                    + '<strong>Groups &rarr; knockout</strong> in Setup, then generate it from the Structure page.</p></div>';
+                    + '<p>This competition format has no bracket stage. Apply <strong>Single elimination</strong>, '
+                    + '<strong>Double elimination</strong>, <strong>Round robin + playoffs</strong>, '
+                    + '<strong>Groups &rarr; knockout</strong> or <strong>Pools &rarr; playoffs</strong> in '
+                    + '<strong>Setup &rarr; Format</strong> to add one.</p></div>';
                 return;
             }
 
             stageSelect.disabled = false;
-            if (!stages.some(function (stage) { return stage.id === bracketStageChoice; })) {
-                bracketStageChoice = stages[0].id;
+            if (!stages.some(function (stage) { return stage.key === bracketStageChoice; })) {
+                // Prefer a drawn bracket over an earlier empty knockout stage.
+                const drawnStage = stages.find(function (stage) { return stage.slots > 0; });
+                bracketStageChoice = (drawnStage || stages[0]).key;
             }
             stageSelect.innerHTML = stages.map(function (stage) {
-                return '<option value="' + stage.id + '"' + (stage.id === bracketStageChoice ? ' selected' : '') + '>'
-                    + escapeHtml(stage.name) + ' (' + stage.matches + ' fixture' + (stage.matches === 1 ? '' : 's') + ')</option>';
+                const countLabel = stage.slots === 0
+                    ? 'not drawn yet'
+                    : stage.matches + ' fixture' + (stage.matches === 1 ? '' : 's');
+                return '<option value="' + escapeHtml(stage.key) + '"' + (stage.key === bracketStageChoice ? ' selected' : '') + '>'
+                    + escapeHtml(stage.name) + ' — ' + escapeHtml(countLabel) + '</option>';
             }).join('');
 
+            const activeStage = stages.find(function (stage) { return stage.key === bracketStageChoice; }) || stages[0];
             const matches = latestSchedule.filter(function (match) {
-                return Number(match.stage_id) === bracketStageChoice;
+                return bracketStageKeyFor(match) === activeStage.key;
             });
+            if (!matches.length) {
+                container.innerHTML = renderBracketSkeleton(activeStage);
+                return;
+            }
             container.innerHTML = renderBracketStage(matches);
         }
 
         const bracketStageSelect = document.getElementById('scBracketStage');
         if (bracketStageSelect) {
             bracketStageSelect.addEventListener('change', function () {
-                bracketStageChoice = Number(this.value || 0);
+                bracketStageChoice = String(this.value || '');
+                try {
+                    window.sessionStorage.setItem('lmsBracketStage:' + leagueId, bracketStageChoice);
+                } catch (error) {
+                    // Ignore storage failures (private mode / quota).
+                }
                 initScheduleBracket();
             });
         }

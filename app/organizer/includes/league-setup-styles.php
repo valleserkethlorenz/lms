@@ -77,6 +77,20 @@
     .lsp-page .lsp-generate-field { flex:1 1 240px; min-width:0; }
     .lsp-page .lsp-generate-value { padding:8px 12px; border:1.5px dashed var(--lsp-line); border-radius:var(--lsp-r-sm); background:#fff; font-size:var(--lsp-fs-help); line-height:1.4; color:var(--lsp-ink-2); }
     .lsp-page .lsp-generate-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .lsp-page .lsp-check.lsp-generate-reset { display:flex; align-items:center; flex-wrap:wrap; gap:5px; margin-top:8px; font-weight:500; }
+    .lsp-page .lsp-check.lsp-generate-reset input { margin:0; accent-color:var(--lsp-navy); }
+    .lsp-page .lsp-check.lsp-generate-reset small { flex:1 1 100%; color:var(--lsp-faint); font-size:var(--lsp-fs-label); line-height:1.4; }
+    /* Draw preview modal: one row per match, grouped by round / bracket side. */
+    .lsp-preview-count { margin:0 0 10px; text-align:left; font-size:12.5px; color:#475569; }
+    .lsp-preview-list { max-height:52vh; overflow:auto; text-align:left; padding-right:4px; }
+    .lsp-preview-group { margin-bottom:12px; }
+    .lsp-preview-group > b { display:block; margin-bottom:5px; font-size:10px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:#64748b; }
+    .lsp-preview-match { display:flex; align-items:center; gap:8px; margin-bottom:4px; padding:6px 9px; border:1px solid #e2e8f2; border-radius:6px; background:#f8fafc; font-size:12px; }
+    .lsp-preview-side { flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .lsp-preview-side span { display:inline-block; min-width:22px; margin-right:5px; padding:1px 5px; border-radius:4px; background:#e8edf7; color:#5c6b82; font-size:9px; font-weight:700; text-align:center; }
+    .lsp-preview-match em { color:#94a3b8; font-style:normal; font-size:10px; }
+    .lsp-preview-warning { margin:10px 0 0; text-align:left; font-size:11.5px; color:#b45309; }
+    .lsp-preview-note { margin:10px 0 0; padding:8px 10px; text-align:left; border-left:3px solid #2563eb; border-radius:4px; background:#eff6ff; font-size:11.5px; line-height:1.5; color:#334155; }
     .lsp-page .btn-primary { background:var(--lsp-navy); border-color:var(--lsp-navy); }
     .lsp-page .btn-primary:hover, .lsp-page .btn-primary:focus { background:#0d3160; border-color:#0d3160; }
     .lsp-page .btn-outline-primary { color:var(--lsp-navy); border:1.5px solid var(--lsp-line); background:#fff; }
@@ -454,6 +468,9 @@
     .lsp-page .lsp-format-copy { min-width:0; flex:1 1 auto; }
     .lsp-page .lsp-format-copy b { display:block; font-size:var(--lsp-fs-help); font-weight:600; color:var(--lsp-ink); }
     .lsp-page .lsp-format-copy small { display:block; margin-top:2px; font-size:var(--lsp-fs-label); line-height:1.35; color:var(--lsp-muted); }
+    .lsp-page .lsp-format-flow { display:flex; align-items:center; flex-wrap:wrap; gap:3px; margin-top:5px; }
+    .lsp-page .lsp-format-flow em { padding:1px 6px; border-radius:4px; background:#eef3f9; color:#5c6b82; font-size:9px; font-weight:600; font-style:normal; letter-spacing:.2px; white-space:nowrap; }
+    .lsp-page .lsp-format-flow i { color:#94a3b8; font-size:8px; }
     .lsp-page .lsp-format-mark { color:var(--lsp-ok); }
 
     .lsp-page .lsp-simple-summary { display:flex; align-items:center; gap:11px; margin:14px 0 8px; padding:11px 13px; border:1px solid var(--lsp-line-soft); border-radius:var(--lsp-r-sm); background:var(--lsp-soft); }

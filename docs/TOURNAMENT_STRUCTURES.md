@@ -47,7 +47,7 @@ Everything lives under the existing stage tables; migration
 | `stage_format` | `round_robin` / `swiss` / `single_elimination` / `double_elimination` / `placement` |
 | `stage_status` | `Pending` → `Active` → `Locked` → `Complete` |
 | `rounds_planned` | Swiss round count (auto = `ceil(log2(teams))`, minimum 3) |
-| `settings_json` | Reserved for per-stage options |
+| `settings_json` | Per-stage options (currently `bracket_reset` for double elimination) |
 | `activated_at`, `locked_at` | Lifecycle timestamps |
 
 ### Bracket graph
@@ -83,7 +83,9 @@ the wizard and the existing tournament engine.
 
 ### 3.1 Presets and editable settings
 
-A preset seeds the stage/group skeleton. The Format step also exposes the preset's
+A preset seeds the stage/group skeleton. Each Format card also shows a short
+stage flow derived from the preset (e.g. `Table → Bracket`,
+`Groups ×2 → Bracket`, `WB + LB + GF`). The Format step also exposes the preset's
 editable knobs:
 
 | Preset | Setting written to the stage |
@@ -117,6 +119,9 @@ saved group sources.
 
 The Matches step follows `setupNextTask()` and shows one action at a time:
 
+* **Preview** lists the actual matchups, grouped by round/bracket side. Double
+  elimination previews the winners, losers and grand-final plan without writing
+  anything.
 * generate the current stage's fixtures (round robin, seeded bracket, playoff patterns),
 * generate a straight seeded bracket for a multi-group → knockout preset,
 * generate the next Swiss round after the current round is complete,
@@ -143,10 +148,28 @@ the semifinal losers.
 
 ### 4.1 Brackets
 
-* **Single elimination** — one round-by-round table, byes tinted like winners.
-* **Double elimination** — three distinct sections: **Winners bracket**,
-  **Losers bracket** and the **Grand final**, with round labels counted from the
-  end (`Quarterfinal`, `Semifinal`, `Final`).
+* The bracket tab is fed by the **structure skeleton**, not only by generated
+  rows. A preset's knockout stage is selectable as **“not drawn yet”** before
+  its fixtures exist and is rendered as a **TBD skeleton** (winners, losers and
+  grand final for double elimination). The organizer state points to
+  **Setup → Matches**, while the public view simply says the draw has not been
+  published yet.
+* The Bracket toggle is only shown when the structure has a bracket stage;
+  Round robin and Swiss hide it.
+* **Single elimination** — one clean round-by-round tree. Seeded draws use the
+  graph engine (`bracket_side` / `node_key`); legacy rows without those columns
+  still render through the same table fallback.
+* Legacy stage-less rows are grouped by their `stage`/`bracket` tag, so both the
+  organizer and public views can draw a pre-stage bracket.
+* **Double elimination** — separate **Winners bracket**, **Losers bracket** and
+  **Grand final** sections (plus **Consolation** when present). Round labels are
+  side-aware: `Winners Final`, `Losers Round n`, `Losers Final`, `Grand Final`.
+  When the reset option is enabled and the losers-bracket entrant wins the first
+  final, a `Grand Final reset` column appears with both teams.
+* **Byes** are normalised to `team_a` with `seed_b = 'BYE'`; any completed
+  one-team row counts as a bye, including rows collapsed by an older engine.
+* When a round mixes pools, each card shows its stage group, so
+  Pools → playoffs quarterfinals stay attributable to their pool.
 
 Committee scoring does not change: the assigned Committee submits the result, and
 the engine moves the teams.
@@ -181,6 +204,8 @@ that has a `node_key` to `progressBracketStageMatch()`.
 | Winners bracket (double elim) | Next winners node | **Drops** into the losers node |
 | Losers bracket | Next losers node | Eliminated |
 | Grand final | Champion (`tournament_complete`) | Eliminated |
+| Grand final GF-M1 with reset enabled, losers-side win | **GF-M2 reset** (both stay alive) | Nothing yet |
+| Grand final reset GF-M2 | Champion (`tournament_complete`) | Eliminated |
 | Swiss / round robin | Nothing — the table decides | Nothing |
 
 Byes are collapsed automatically: a node with one team and an unreachable other
@@ -201,6 +226,9 @@ from the corrected row.
 | `swissPairings()`, `swissFirstRound()`, `swissRoundCount()` | Pure Swiss pairing |
 | `roundRobinRounds()` | Pure circle-method rounds |
 | `createBracketForStage()` | Persist a plan + resolve byes |
+| `leagueBracketStageCatalog()` / `getLeagueBracketStageCatalog()` | Bracket stage summaries for the views (empty stages included) |
+| `stageSettings()` / `saveStageSettings()` | Per-stage options such as `bracket_reset` |
+| `ensureBracketResetFinal()` / `clearBracketResetFinal()` | Create or remove GF-M2 when a reset final is / is no longer needed |
 | `progressBracketStageMatch()` | Winner forward, loser down, champion detection |
 | `generateSwissRoundForStage()` | Lock previous round + pair + create fixtures |
 | `stageSlotPlan()`, `saveStageSlots()` | Saved seeding-board helpers (legacy; Setup uses automatic promotion) |
@@ -235,8 +263,12 @@ never drops or rewrites data. Old stages are backfilled from `stage_type`
 ## 8. Known limits
 
 * A bracket supports **2 – 128 teams**; missing seeds become byes.
-* Double elimination does **not** generate a bracket-reset grand final; the grand
-  final is single. (Scheduled as a follow-up.)
+* Double elimination can opt into a **bracket-reset grand final** when the draw is
+  generated. If the losers-bracket entrant wins the first grand final, a second
+  grand final (`GF-M2`) is created on demand with both grand-finalists; a
+  winners-side win in the first final ends the tournament with no reset row.
+  If GF-M1 is corrected after GF-M2 has been played, reopen GF-M2 first so its
+  result is reversed before the first final is corrected.
 * `bottom_consolation` saves the rule and shows in the board, but the consolation
   stage must be added as a stage of its own (the wizard does not create it
   automatically yet).

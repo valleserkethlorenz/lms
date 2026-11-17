@@ -116,7 +116,7 @@ function progressMatchResult($conn, $leagueId, $scheduleId, $winnerId, $committe
 
     $leagueName = $league['league_name'] ?? '';
 
-    $mStmt = $conn->prepare("SELECT round, bracket, stage, league_group_id, stage_id, stage_group_id, win_type, result_status, team_a, team_b, winner, a_score, b_score
+    $mStmt = $conn->prepare("SELECT round, bracket, stage, league_group_id, stage_id, stage_group_id, best_of, win_type, result_status, team_a, team_b, winner, a_score, b_score
                              FROM tbl_schedule WHERE id = ?");
     $mStmt->bind_param("i", $scheduleId);
     $mStmt->execute();
@@ -248,6 +248,30 @@ function reverseProgression(mysqli $conn, int $leagueId, int $scheduleId): array
                 $clear->close();
                 $result['cleared_matches'][] = $relatedId;
             } else {
+                // A reset final removed by a correction must also release GF-M1's
+                // winner/loser links, or the graph would keep pointing at a gone row.
+                $metaStmt = $conn->prepare("SELECT stage_id, node_key FROM tbl_schedule WHERE id = ? AND league_id = ?");
+                if ($metaStmt) {
+                    $metaStmt->bind_param('ii', $relatedId, $leagueId);
+                    $metaStmt->execute();
+                    $relatedMeta = $metaStmt->get_result()->fetch_assoc();
+                    $metaStmt->close();
+                    if ($relatedMeta && (string)$relatedMeta['node_key'] === 'GF-M2'
+                        && function_exists('setBracketResetLinks')) {
+                        $gf1Stmt = $conn->prepare("SELECT id FROM tbl_schedule
+                                                     WHERE league_id = ? AND stage_id = ? AND node_key = 'GF-M1'
+                                                     ORDER BY id DESC LIMIT 1");
+                        if ($gf1Stmt) {
+                            $relatedStageId = (int)$relatedMeta['stage_id'];
+                            $gf1Stmt->bind_param('ii', $leagueId, $relatedStageId);
+                            $gf1Stmt->execute();
+                            $gf1Row = $gf1Stmt->get_result()->fetch_assoc();
+                            $gf1Stmt->close();
+                            if ($gf1Row) setBracketResetLinks($conn, (int)$gf1Row['id'], false);
+                        }
+                    }
+                }
+
                 $del = $conn->prepare("DELETE FROM tbl_schedule WHERE id = ? AND league_id = ?");
                 $del->bind_param('ii', $relatedId, $leagueId);
                 $del->execute();
@@ -430,7 +454,9 @@ function getProgressionSummary($conn, $leagueId) {
     $mc = $conn->prepare("SELECT COUNT(*) as total, COUNT(CASE WHEN LOWER(status)='completed' THEN 1 END) as completed
                           FROM tbl_schedule
                           WHERE league_id=? AND (is_archived=0 OR is_archived IS NULL)
-                            AND NOT (team_b = 0 AND seed_b = 'BYE')");
+                            AND NOT (LOWER(status) = 'completed'
+                                     AND (team_a = 0 OR team_b = 0)
+                                     AND NOT (team_a = 0 AND team_b = 0))");
     $mc->bind_param("i", $leagueId); $mc->execute();
     $mr = $mc->get_result()->fetch_assoc(); $mc->close();
     $summary['total_matches'] = (int)$mr['total'];

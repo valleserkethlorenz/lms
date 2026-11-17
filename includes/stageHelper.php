@@ -96,6 +96,144 @@ function getStage(mysqli $conn, int $stageId): ?array {
     return $stage ?: null;
 }
 
+/**
+ * Bracket stage summaries for a stage skeleton.
+ *
+ * The bracket views must know about a preset's knockout stage even before its
+ * draw exists; deriving the stage list from tbl_schedule alone hid every
+ * not-yet-generated bracket. Placement stages (Battle for Third) are not part
+ * of the bracket tree. The effective stageFormat() is used so a stage whose
+ * stored format disagrees with its type is classified like the engine does.
+ *
+ * The function accepts both database stage rows (stage_type/stage_format) and
+ * the preset definitions (type/format), which keeps the Setup previews and the
+ * tests on the same source of truth.
+ *
+ * @param array<int,array<string,mixed>> $stages rows shaped like getLeagueStages()
+ *        (with 'groups' filled in) or leagueStructurePresets() stage definitions.
+ * @param int|null $approvedTeamCount approved entrants of a first-stage bracket
+ *        (used when the preset does not create a group for it).
+ * @return array<int,array{id:int,name:string,order:int,format:string,groups:array<int,string>,
+ *                         qualifiers:int,team_count:int,entries:int,bracket_reset:bool}>
+ */
+function leagueBracketStageCatalog(array $stages, ?int $approvedTeamCount = null): array {
+    $catalog = [];
+    $previousGroupCount = 0;
+    $previousQualifiers = 0;
+    $previousTeamCount  = 0;
+
+    /* Previous-stage sizing must follow the pipeline order, not the caller's
+       array order. Preset definitions carry no display_order/id, so the stable
+       sort keeps their declared order. */
+    $orderedStages = array_values($stages);
+    usort($orderedStages, static function (array $a, array $b): int {
+        $aOrder = (int)($a['display_order'] ?? 0);
+        $bOrder = (int)($b['display_order'] ?? 0);
+        if ($aOrder !== $bOrder) return $aOrder <=> $bOrder;
+        return (int)($a['id'] ?? 0) <=> (int)($b['id'] ?? 0);
+    });
+
+    foreach ($orderedStages as $index => $stage) {
+        $type = (string)($stage['stage_type'] ?? $stage['type'] ?? '');
+        $format = stageFormat([
+            'stage_type'   => $type,
+            'stage_format' => (string)($stage['stage_format'] ?? $stage['format'] ?? ''),
+        ]);
+
+        $groupNames = [];
+        $teamCount  = 0;
+        foreach (($stage['groups'] ?? []) as $group) {
+            if (is_array($group)) {
+                $name = trim((string)($group['name'] ?? ''));
+                if (isset($group['team_count'])) {
+                    $teamCount += (int)$group['team_count'];
+                } elseif (isset($group['teams']) && is_array($group['teams'])) {
+                    $teamCount += count($group['teams']);
+                }
+            } else {
+                $name = trim((string)$group);
+            }
+            if ($name !== '') $groupNames[] = $name;
+        }
+
+        $qualifiers = (int)($stage['qualifiers_per_group'] ?? $stage['qualifiers'] ?? 0);
+        $isBracket  = $type !== 'placement' && stageFormatUsesBracket($format);
+
+        if ($isBracket) {
+            /* Expected entrants are the current group teams when promotion has
+               already run; otherwise derive them from the previous stage's
+               qualifiers. A first-stage bracket (Single/Double elimination)
+               has no previous stage, so the league's approved teams are used. */
+            $entries = $teamCount;
+            if ($entries <= 0 && $previousGroupCount > 0 && $previousQualifiers > 0) {
+                $entries = $previousGroupCount * $previousQualifiers;
+            }
+            if ($entries <= 0 && $previousTeamCount > 0) {
+                $entries = $previousTeamCount;
+            }
+            if ($entries <= 0 && $index === 0 && $approvedTeamCount !== null) {
+                $entries = max(0, $approvedTeamCount);
+            }
+
+            $catalog[] = [
+                'id'         => (int)($stage['id'] ?? 0),
+                'name'       => (string)($stage['name'] ?? 'Bracket'),
+                'order'      => (int)($stage['display_order'] ?? ($index + 1)),
+                'format'     => $format,
+                'groups'     => $groupNames,
+                'qualifiers'    => $qualifiers,
+                'team_count'    => $teamCount,
+                'entries'       => max(0, $entries),
+                'bracket_reset' => (bool)stageSetting($stage, 'bracket_reset', 0),
+            ];
+        }
+
+        $previousGroupCount = count($groupNames);
+        $previousQualifiers = $qualifiers;
+        $previousTeamCount  = $teamCount;
+    }
+
+    usort($catalog, static function (array $a, array $b): int {
+        return [$a['order'], $a['id']] <=> [$b['order'], $b['id']];
+    });
+
+    return $catalog;
+}
+
+/**
+ * Load the bracket stage catalog of a league (stages + group names/team counts).
+ *
+ * @return array<int,array<string,mixed>>
+ */
+function getLeagueBracketStageCatalog(mysqli $conn, int $leagueId): array {
+    // Load every stage (not just bracket stages): the previous stage's group
+    // count and qualifier setting are what size the next bracket before its
+    // promotion has run.
+    $stages = [];
+    foreach (getLeagueStages($conn, $leagueId) as $stage) {
+        $groups = [];
+        foreach (getStageGroups($conn, (int)$stage['id']) as $group) {
+            $group['team_count'] = count(getStageGroupTeams($conn, (int)$group['id']));
+            $groups[] = $group;
+        }
+        $stage['groups'] = $groups;
+        $stages[] = $stage;
+    }
+
+    $approvedCount = 0;
+    $stmt = $conn->prepare("SELECT COUNT(*) AS c FROM tbl_team
+                            WHERE league_id = ? AND LOWER(status) = 'approved'
+                              AND progression_status <> 'Eliminated'");
+    if ($stmt) {
+        $stmt->bind_param('i', $leagueId);
+        $stmt->execute();
+        $approvedCount = (int)($stmt->get_result()->fetch_assoc()['c'] ?? 0);
+        $stmt->close();
+    }
+
+    return leagueBracketStageCatalog($stages, $approvedCount);
+}
+
 /** @param string $type one of group|crossover|knockout|placement */
 function createStage(mysqli $conn, int $leagueId, string $name, string $type = 'group', ?int $order = null, ?int $qualifiersPerGroup = null, bool $carriesPrevious = false, ?string $format = null): int {
     if (!array_key_exists($type, stageTypeLabels())) $type = 'group';
@@ -634,7 +772,7 @@ function previewStageMatches(mysqli $conn, int $leagueId, int $stageId, string $
         if (($stage['stage_type'] ?? '') !== 'knockout') {
             return [[], ['The seeded bracket is only available on a knockout stage.']];
         }
-        if (count($groups) > 1) {
+        if (count($groups) > 1 && stageFormat($stage) !== 'double_elimination') {
             return [[], ['The seeded bracket expects one group or no groups.']];
         }
 
@@ -644,6 +782,18 @@ function previewStageMatches(mysqli $conn, int $leagueId, int $stageId, string $
             $groupId = (int)$groups[0]['id'];
             foreach (getStageGroupTeams($conn, $groupId) as $member) {
                 $teams[] = ['team_id' => (int)$member['team_id'], 'team_name' => $member['team_name']];
+            }
+        } elseif (count($groups) > 1) {
+            // A custom double-elimination stage may pool several groups; the
+            // graph engine draws all of them into one bracket.
+            $seenTeams = [];
+            foreach ($groups as $group) {
+                foreach (getStageGroupTeams($conn, (int)$group['id']) as $member) {
+                    $teamId = (int)$member['team_id'];
+                    if ($teamId <= 0 || isset($seenTeams[$teamId])) continue;
+                    $seenTeams[$teamId] = true;
+                    $teams[] = ['team_id' => $teamId, 'team_name' => $member['team_name']];
+                }
             }
         } else {
             $stages = getLeagueStages($conn, $leagueId);
@@ -666,9 +816,63 @@ function previewStageMatches(mysqli $conn, int $leagueId, int $stageId, string $
             }
         }
 
+        // Generation reads the saved seeding board first; preview the same order
+        // so the list the organizer confirms matches the draw that is written.
+        $seededIds = array_values(array_unique(array_map('intval', stageSeededTeamIds($conn, $leagueId, $stageId))));
+        if (count($seededIds) >= 2) {
+            $teamsById = [];
+            foreach ($teams as $team) $teamsById[(int)$team['team_id']] = $team;
+            $ordered = [];
+            foreach ($seededIds as $seededId) {
+                if (isset($teamsById[$seededId])) $ordered[] = $teamsById[$seededId];
+            }
+            if (count($ordered) >= 2) $teams = $ordered;
+        }
+
         $teamCount = count($teams);
         if ($teamCount < 2) return [[], ['The seeded bracket needs at least two teams.']];
         if ($teamCount > 128) return [[], ['The seeded bracket supports up to 128 teams.']];
+
+        /* Double elimination has a graph plan rather than round-by-round seed
+           pairs. Preview it without writing anything so the Setup Matches step
+           can show the winners/losers/grand-final structure. */
+        if (stageFormat($stage) === 'double_elimination') {
+            foreach (bracketPlanForFormat('double_elimination', $teamCount) as $node) {
+                $slots = [];
+                foreach (['a', 'b'] as $slotKey) {
+                    $source = $node['slots'][$slotKey] ?? null;
+                    $sourceType = (string)($source['type'] ?? '');
+                    if ($sourceType === 'seed') {
+                        $seed = (int)($source['seed'] ?? 0);
+                        $team = $teams[$seed - 1] ?? null;
+                        $slots[$slotKey] = [
+                            'id'   => (int)($team['team_id'] ?? 0),
+                            'name' => (string)($team['team_name'] ?? 'TBD'),
+                            'seed' => (string)$seed,
+                        ];
+                    } elseif ($sourceType === 'bye') {
+                        $slots[$slotKey] = ['id' => 0, 'name' => 'BYE', 'seed' => 'BYE'];
+                    } else {
+                        $slots[$slotKey] = ['id' => 0, 'name' => 'TBD', 'seed' => ''];
+                    }
+                }
+
+                $matches[] = [
+                    'stage_group_id' => null,
+                    'round'          => (int)$node['round'],
+                    'team_a_id'      => $slots['a']['id'],
+                    'team_b_id'      => $slots['b']['id'],
+                    'team_a_name'    => $slots['a']['name'],
+                    'team_b_name'    => $slots['b']['name'],
+                    'seed_a'         => $slots['a']['seed'],
+                    'seed_b'         => $slots['b']['seed'],
+                    'label'          => (string)$node['label'],
+                    'bracket_side'   => (string)$node['side'],
+                    'bye'            => $slots['a']['name'] === 'BYE' || $slots['b']['name'] === 'BYE',
+                ];
+            }
+            return [$matches, $errors];
+        }
 
         $seededRoundSizes = seededBracketRoundSizes($teamCount);
         $seededRoundCount = count($seededRoundSizes);
@@ -1319,11 +1523,13 @@ function generateStageMatches(mysqli $conn, int $leagueId, int $stageId, string 
         if ($id > 0 && !empty($match['bye'])) {
             $byeWinner = (int)$match['team_a_id'] ?: (int)$match['team_b_id'];
             $byeStmt = $conn->prepare("UPDATE tbl_schedule
-                                       SET status = 'Completed', winner = ?, a_score = 0, b_score = 0,
-                                           published_at = NOW(), stage_group_id = NULL
+                                       SET team_a = ?, team_b = 0, seed_b = 'BYE',
+                                           status = 'Completed', winner = ?, a_score = 0, b_score = 0,
+                                           published_at = NOW(), stage_group_id = NULL,
+                                           result_note = 'Bye — advances automatically'
                                        WHERE id = ?");
             if ($byeStmt) {
-                $byeStmt->bind_param('ii', $byeWinner, $id);
+                $byeStmt->bind_param('iii', $byeWinner, $byeWinner, $id);
                 $byeStmt->execute();
                 $byeStmt->close();
             }

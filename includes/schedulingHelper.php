@@ -496,7 +496,13 @@ function getLeagueSchedule($conn, $leagueId, $status = null, $publishedOnly = fa
             LEFT JOIN tbl_league_stage st ON st.id=s.stage_id
             LEFT JOIN tbl_league_stage_group sg ON sg.id=s.stage_group_id
             WHERE s.league_id = ? AND (s.is_archived=0 OR s.is_archived IS NULL)";
-    if (!$includeByes) $sql .= " AND NOT (s.team_b = 0 AND s.seed_b = 'BYE')";
+    if (!$includeByes) {
+        // Every completed one-team row is a bye/auto-advance, including the
+        // rows the old graph engine collapsed without stamping seed_b = 'BYE'.
+        $sql .= " AND NOT (LOWER(s.status) = 'completed'
+                           AND (s.team_a = 0 OR s.team_b = 0)
+                           AND NOT (s.team_a = 0 AND s.team_b = 0))";
+    }
     if ($publishedOnly) $sql .= " AND s.published_at IS NOT NULL AND (s.is_archived=0 OR s.is_archived IS NULL)";
     
     if ($status) {
@@ -546,6 +552,7 @@ function getLeagueBracketSchedule($conn, $leagueId) {
             t_b.team_name as team_b_name,
             lg.name AS group_name,
             st.name AS stage_name, st.stage_type, st.stage_format,
+            st.display_order AS stage_order,
             sg.name AS stage_group_name
             FROM tbl_schedule s
             LEFT JOIN tbl_team t_a ON s.team_a = t_a.id
@@ -558,7 +565,9 @@ function getLeagueBracketSchedule($conn, $leagueId) {
               AND (st.stage_type IS NULL OR st.stage_type <> 'placement')
               AND (
                   st.stage_type = 'knockout'
-                  OR st.stage_format IN ('single_elimination', 'double_elimination')
+                  -- A legacy stage row may predate the type backfill.
+                  OR ((st.stage_type IS NULL OR st.stage_type = '')
+                      AND st.stage_format IN ('single_elimination', 'double_elimination'))
                   OR (st.id IS NULL AND s.bracket = 'knockout')
               )
             ORDER BY COALESCE(st.display_order, 0), s.stage_id, s.round, s.id";

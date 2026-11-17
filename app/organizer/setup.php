@@ -307,7 +307,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
                 }
                 $playoffPromotion=promoteStageQualifiers($conn,$id,$playoffSourceId,$playoffStageId,$playoffTeams,true,null);
                 updateStage($conn,$playoffSourceId,(string)$playoffSource['name'],(string)$playoffSource['stage_type'],(int)$playoffSource['display_order'],$playoffTeams,!empty($playoffSource['carries_previous_results']));
-                $playoffGenerated=generateStageMatches($conn,$id,$playoffStageId,'seeded_bracket');
+                /* Draw the playoff bracket through the graph engine so it carries
+                   bracket_side/node_key like every other preset bracket. */
+                $playoffStageRow=getStage($conn,$playoffStageId) ?: $playoffNextStage;
+                $playoffStageFormat=$playoffStageRow ? stageFormat($playoffStageRow) : 'single_elimination';
+                $playoffStageTeams=[];
+                foreach(stageTeamPool($conn,$id,$playoffStageId) as $playoffTeam) $playoffStageTeams[]=(int)$playoffTeam['team_id'];
+                $playoffGenerated=createBracketForStage($conn,$id,$playoffStageId,$playoffStageTeams,$playoffStageFormat);
                 if(!empty($playoffGenerated['errors'])) throw new RuntimeException(implode(' ',$playoffGenerated['errors']));
                 if((int)$playoffGenerated['created']<1) throw new RuntimeException('The playoff bracket did not create any matches.');
                 $conn->commit();
@@ -495,11 +501,18 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             $bracketTeams=stageSeededTeamIds($conn,$id,$bracketStageId);
             if(count($bracketTeams)<2) throw new RuntimeException('Assign at least two teams to this stage first.');
             $bracketFormat=stageFormat($bracketStage);
-            $bracketResult=createBracketForStage($conn,$id,$bracketStageId,$bracketTeams,$bracketFormat);
+            $bracketReset=$bracketFormat==='double_elimination' && !empty($_POST['bracket_reset']);
+            $bracketResult=createBracketForStage($conn,$id,$bracketStageId,$bracketTeams,$bracketFormat,['bracket_reset'=>$bracketReset]);
             if(!empty($bracketResult['errors'])) throw new RuntimeException(implode(' ',$bracketResult['errors']));
             if((int)$bracketResult['created']<1) throw new RuntimeException('The bracket did not create any matches.');
+            if($bracketFormat==='double_elimination' && function_exists('saveStageSettings')){
+                $bracketOptions=stageSettings($bracketStage);
+                $bracketOptions['bracket_reset']=$bracketReset?1:0;
+                saveStageSettings($conn,$bracketStageId,$bracketOptions);
+            }
             auditLog($conn,'Generate Seeded Bracket',"Generated a {$bracketResult['created']}-match bracket for stage ID $bracketStageId (league ID $id)");
-            $_SESSION['setup_flash']=['success','Bracket generated — '.$bracketResult['created'].' match/es created as Drafts.'];
+            $_SESSION['setup_flash']=['success','Bracket generated — '.$bracketResult['created'].' match/es created as Drafts.'
+                .($bracketReset?' Bracket reset final is enabled.':'')];
         } elseif(isset($_POST['updateStageDetails'])){
             /* Inline editor in step 2: rename, retype, reorder or change how many
                teams advance from each group. Nothing here deletes data. */
@@ -965,6 +978,7 @@ include 'includes/header.php';
         var wizardCsrf = <?= json_encode(csrfToken()) ?>;
         var wizardStageId = Number(wizardForm.getAttribute('data-stage-id'));
         var wizardPattern = wizardForm.querySelector('[name="pattern"]');
+        var wizardReset = wizardForm.querySelector('[name="bracket_reset"]');
 
         var wizardPost = function (action, onDone) {
             var payload = {
@@ -973,6 +987,7 @@ include 'includes/header.php';
                 pattern: wizardPattern ? wizardPattern.value : '',
                 csrf_token: wizardCsrf
             };
+            if (wizardReset) payload.bracket_reset = wizardReset.checked ? 1 : 0;
             payload[action] = true;
             $.ajax({
                 url: 'action/schedulingAction.php',
@@ -987,6 +1002,48 @@ include 'includes/header.php';
             });
         };
 
+        var wizardEscapeHtml = function (value) {
+            return String(value === null || value === undefined ? '' : value)
+                .replace(/[&<>"']/g, function (character) {
+                    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character];
+                });
+        };
+
+        var wizardPreviewHtml = function (matches, errors) {
+            var groups = {};
+            var order = [];
+            matches.forEach(function (match) {
+                var key = String(match.label || 'Draw').trim() || 'Draw';
+                if (match.bracket_side === 'winners') key = 'Winners ' + key;
+                else if (match.bracket_side === 'losers') key = 'Losers Round ' + (match.round || '');
+                if (!groups[key]) { groups[key] = []; order.push(key); }
+                groups[key].push(match);
+            });
+
+            var html = '<p class="lsp-preview-count"><strong>' + matches.length + '</strong> match'
+                + (matches.length === 1 ? '' : 'es') + ' would be created.</p>';
+            html += '<div class="lsp-preview-list">';
+            order.forEach(function (key) {
+                html += '<div class="lsp-preview-group"><b>' + wizardEscapeHtml(key) + '</b>';
+                groups[key].forEach(function (match) {
+                    var seedA = match.seed_a ? '<span>' + wizardEscapeHtml(match.seed_a) + '</span>' : '';
+                    var seedB = match.seed_b ? '<span>' + wizardEscapeHtml(match.seed_b) + '</span>' : '';
+                    html += '<div class="lsp-preview-match">'
+                        + '<span class="lsp-preview-side">' + seedA + wizardEscapeHtml(match.team_a || 'TBD') + '</span>'
+                        + '<em>vs</em>'
+                        + '<span class="lsp-preview-side">' + seedB + wizardEscapeHtml(match.team_b || 'TBD') + '</span>'
+                        + '</div>';
+                });
+                html += '</div>';
+            });
+            html += '</div>';
+
+            if (errors && errors.length) {
+                html += '<p class="lsp-preview-warning">' + wizardEscapeHtml(errors.join(' ')) + '</p>';
+            }
+            return html;
+        };
+
         var wizardPreview = wizardForm.querySelector('.js-wizard-preview');
         if (wizardPreview) {
             wizardPreview.addEventListener('click', function () {
@@ -996,9 +1053,13 @@ include 'includes/header.php';
                         Swal.fire('Nothing to preview', (res.errors && res.errors[0]) || 'No teams are available for this draw yet.', 'warning');
                         return;
                     }
+                    var resetNote = wizardReset && wizardReset.checked
+                        ? '<p class="lsp-preview-note">Bracket reset enabled — a second grand final is created only if the losers-bracket team wins the first.</p>'
+                        : '';
                     Swal.fire({
-                        title: 'Preview',
-                        html: '<strong>' + res.matches.length + '</strong> match' + (res.matches.length === 1 ? '' : 'es') + ' would be created. Generate them now?',
+                        title: 'Draw preview',
+                        html: wizardPreviewHtml(res.matches, Array.isArray(res.errors) ? res.errors : []) + resetNote,
+                        width: 680,
                         showCancelButton: true,
                         confirmButtonText: 'Generate',
                         cancelButtonText: 'Close'

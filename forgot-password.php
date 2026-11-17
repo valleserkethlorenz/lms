@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .btn-r:hover{background:#0d2257;color:#fff}
         .ml{font-size:13px;color:#64748b}.ml:hover{color:var(--primary)}
         .home-link{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:#53617a;font-size:13px;font-weight:600;text-decoration:none}
-        .home-link:hover{color:var(--primary);text-decoration:underline}
+        .home-link:hover{color:var(--primary);text-decoration:none}
     </style>
 </head>
 <body>

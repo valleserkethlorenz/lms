@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/../config/dbconnect.php';
 require_once __DIR__.'/schedulingHelper.php';
+require_once __DIR__.'/stageHelper.php';
 header('Content-Type: application/json');
 $leagueId=(int)($_GET['league_id'] ?? $_POST['league_id'] ?? 0);
 $status=trim($_GET['status'] ?? $_POST['status'] ?? '');
@@ -16,7 +17,10 @@ if($includeBracket){
     // The bracket is the full draw (drafts included, unpublished details hidden)
     // while the fixture list above stays published-only.
     $payload['bracket']=getLeagueBracketSchedule($conn,$leagueId);
+    // The stage catalog comes from the structure skeleton, not from the draw:
+    // a preset's knockout stage must be visible before its fixtures exist.
+    $payload['bracket_stages']=getLeagueBracketStageCatalog($conn,$leagueId);
 }
-echo json_encode($payload);
+echo json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE);
 
 
