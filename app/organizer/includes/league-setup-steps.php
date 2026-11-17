@@ -690,7 +690,7 @@ $wizardTeamCard = static function (
         <span class="lsp-step-status <?= $wizardMatchesState ?>"><?= $wizardMatchesStatus ?></span>
     </div>
     <div class="lsp-step-body">
-        <p class="lsp-lead">Generate every fixture here. Dates, venues, Committee, publishing and results are managed on <a href="schedule.php?id=<?= (int) $id ?>">Schedule</a>.</p>
+       
 
         <?php if (!$stages): ?>
             <div class="lsp-empty">
@@ -832,7 +832,7 @@ $wizardTeamCard = static function (
                     <p class="lsp-help">
                         <?= !empty($wizardNextTask['auto_seeds'])
                             ? 'The approved teams are drawn into the opening groups automatically.'
-                            : 'Matches are created as Drafts; dates, venues, Committee and results are managed on Schedule.' ?>
+                            : '' ?>
                     </p>
                 <?php endif; ?>
             <?php elseif ($wizardTaskKey === 'generate_swiss_round' && $wizardTaskStage): ?>
@@ -881,12 +881,6 @@ $wizardTeamCard = static function (
                 <p class="lsp-help">Choose a format first.</p>
                 <a class="btn btn-primary" href="?id=<?= (int) $id ?>&amp;step=format#step-format" data-lsp-step-go="format">Choose a format</a>
             <?php endif; ?>
-
-
-            <div class="lsp-simple-links">
-                <a class="lp-link-btn" href="schedule.php?id=<?= (int) $id ?>"><i class="bi bi-calendar-check me-1" aria-hidden="true"></i>Schedule</a>
-                <a class="lp-link-btn" href="standing.php?id=<?= (int) $id ?>"><i class="bi bi-bar-chart-line me-1" aria-hidden="true"></i>Standings</a>
-            </div>
         <?php endif; ?>
 
         <?php $wizardMatchesPrev = $wizardStepBefore('matches'); ?>

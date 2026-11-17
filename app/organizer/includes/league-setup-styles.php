@@ -486,7 +486,6 @@
     .lsp-page .lsp-simple-next { margin-top:16px; padding-top:14px; border-top:1px solid var(--lsp-line-soft); }
     .lsp-page .lsp-simple-next > b { display:block; font-size:var(--lsp-fs-body); color:var(--lsp-ink); }
     .lsp-page .lsp-simple-done { display:flex; align-items:center; gap:8px; margin:14px 0 10px; padding:12px 14px; border:1px solid var(--lsp-ok-line); border-radius:var(--lsp-r-sm); background:var(--lsp-ok-soft); font-size:var(--lsp-fs-help); font-weight:600; color:var(--lsp-ok); }
-    .lsp-page .lsp-simple-links { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--lsp-line-soft); }
     /* ---------- Manual group draw (Teams step) ----------------------------- */
     .lsp-page .lsp-draw { margin-top:16px; padding-top:14px; border-top:1px solid var(--lsp-line-soft); }
     .lsp-page .lsp-draw-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
