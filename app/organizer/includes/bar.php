@@ -177,6 +177,27 @@ if (!empty($userId) && !empty($conn)) {
         .topbar .topbar-title { display:none; }
     }
 </style>
+<script>
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        var toggleButton = target && target.closest ? target.closest('#organizerSidebarToggle') : null;
+        if (!toggleButton) return;
+
+        var sidebar = document.getElementById('accordionSidebar');
+        if (!sidebar) return;
+
+        if (window.innerWidth <= 768) {
+            var open = !sidebar.classList.contains('active');
+            sidebar.classList.toggle('active', open);
+            var backdrop = document.getElementById('lmsSidebarBackdrop');
+            if (backdrop) backdrop.classList.toggle('show', open);
+            toggleButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+        } else {
+            var mini = document.body.classList.toggle('lms-mini');
+            try { localStorage.setItem('lms_sidebar_mini', mini ? '1' : '0'); } catch (e) {}
+        }
+    }, true);
+</script>
 <div id="wrapper">
     <div id="lmsSidebarBackdrop" class="lms-sidebar-backdrop"></div>
     <ul class="navbar-nav sidebar sidebar-dark accordion" id="accordionSidebar" style="background-color:#09173c;">
@@ -330,16 +351,6 @@ if (!empty($userId) && !empty($conn)) {
             sidebar.classList.toggle('active', open);
             if (backdrop) backdrop.classList.toggle('show', open);
             if (toggleButton) toggleButton.setAttribute('aria-expanded', open ? 'true' : 'false');
-        }
-        if (toggleButton) {
-            toggleButton.addEventListener('click', function () {
-                if (isMobile()) {
-                    setDrawerOpen(!sidebar.classList.contains('active'));
-                } else {
-                    var mini = document.body.classList.toggle('lms-mini');
-                    try { localStorage.setItem(key, mini ? '1' : '0'); } catch (e) {}
-                }
-            });
         }
         function isDesktop() { return !isMobile(); }
         try { if (isDesktop() && localStorage.getItem(key) === '1') document.body.classList.add('lms-mini'); } catch (e) {}

@@ -490,6 +490,31 @@ function assignStageTeam(mysqli $conn, int $groupId, int $teamId, ?int $seed = n
 }
 
 /**
+ * Place a team in exactly one group of a stage.
+ *
+ * The drag-and-drop draw on the Setup -> Teams step calls this on every drop.
+ * The composite primary key of tbl_league_stage_group_team is
+ * (stage_group_id, team_id), so it would allow the same team in two groups of
+ * one stage; the delete below enforces the real rule — one group per team per
+ * stage — and also repairs legacy duplicate rows.
+ *
+ * Passing null or 0 as the target removes the team from every group of the
+ * stage (the "Unassigned" container).
+ */
+function moveStageTeamToGroup(mysqli $conn, int $stageId, int $teamId, ?int $targetGroupId = null): void {
+    $stmt = $conn->prepare("DELETE sgt FROM tbl_league_stage_group_team sgt
+                            JOIN tbl_league_stage_group g ON g.id = sgt.stage_group_id
+                            WHERE g.stage_id = ? AND sgt.team_id = ?");
+    $stmt->bind_param('ii', $stageId, $teamId);
+    $stmt->execute();
+    $stmt->close();
+
+    if ($targetGroupId !== null && $targetGroupId > 0) {
+        assignStageTeam($conn, $targetGroupId, $teamId);
+    }
+}
+
+/**
  * Seed the empty groups of the FIRST stage with every approved team.
  *
  * The structure presets create their stage groups empty. On the first draw this

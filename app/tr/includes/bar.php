@@ -120,6 +120,26 @@ if (!empty($userId) && !empty($conn)) {
         .topbar .account-link .account-menu-label { display:none; }
     }
 </style>
+<script>
+    document.addEventListener('click', function (event) {
+        var target = event.target;
+        var toggleButton = target && target.closest ? target.closest('.topbar-toggle') : null;
+        if (!toggleButton) return;
+
+        var sidebar = document.getElementById('accordionSidebar');
+        if (!sidebar) return;
+
+        if (window.innerWidth <= 768) {
+            var open = !sidebar.classList.contains('active');
+            sidebar.classList.toggle('active', open);
+            var backdrop = document.getElementById('lmsSidebarBackdrop');
+            if (backdrop) backdrop.classList.toggle('show', open);
+        } else {
+            var mini = document.body.classList.toggle('lms-mini');
+            try { localStorage.setItem('lms_sidebar_mini_team_rep', mini ? '1' : '0'); } catch (e) {}
+        }
+    }, true);
+</script>
 <div id="wrapper">
     <div id="lmsSidebarBackdrop" class="lms-sidebar-backdrop"></div>
     <ul class="navbar-nav sidebar sidebar-dark accordion" id="accordionSidebar" style="background-color:#09173c;">
@@ -162,7 +182,7 @@ if (!empty($userId) && !empty($conn)) {
     <div id="content-wrapper" style="background-color:#ffffff; padding-top:70px; margin-left:220px;">
         <div id="content">
             <nav class="navbar navbar-expand navbar-light topbar flex-nowrap mb-4 shadow" style="background-color:#09173c; position:fixed; top:0; left:220px; right:0; width:calc(100% - 220px); min-height:70px; z-index:999;">
-                <button class="btn btn-link topbar-toggle p-0 m-2" type="button" onclick="lmsToggleSidebar()" aria-label="Toggle sidebar">
+                <button class="btn btn-link topbar-toggle p-0 m-2" type="button" aria-label="Toggle sidebar">
                     <i class="bi bi-list text-white fs-3"></i>
                 </button>
                 <h1 class="mt-2 topbar-title" style="color:white;letter-spacing:1px;font-weight:500;">TEAM REPRESENTATIVE PORTAL</h1>
@@ -189,18 +209,6 @@ if (!empty($userId) && !empty($conn)) {
             });
         </script>
 <script>
-    function lmsToggleSidebar() {
-        var sidebar = document.getElementById('accordionSidebar');
-        var backdrop = document.getElementById('lmsSidebarBackdrop');
-        if (!sidebar) return;
-        if (window.innerWidth <= 768) {
-            var open = sidebar.classList.toggle('active');
-            if (backdrop) backdrop.classList.toggle('show', open);
-        } else {
-            var mini = document.body.classList.toggle('lms-mini');
-            try { localStorage.setItem('lms_sidebar_mini_team_rep', mini ? '1' : '0'); } catch (e) {}
-        }
-    }
     (function () {
         var sidebar = document.getElementById('accordionSidebar');
         var backdrop = document.getElementById('lmsSidebarBackdrop');

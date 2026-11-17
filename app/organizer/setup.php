@@ -415,8 +415,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
             $teamStmt=$conn->prepare("SELECT 1 FROM tbl_team WHERE id=? AND league_id=? AND LOWER(status)='approved'"); $teamStmt->bind_param('ii',$stageTeamId,$id); $teamStmt->execute();
             $validStageTeam=(bool)$teamStmt->get_result()->fetch_row(); $teamStmt->close();
             if(!$validStageTeam) throw new RuntimeException('Approved team not found in this league.');
-            if(!empty($_POST['unassign'])) { unassignStageTeam($conn,$stageGroupId,$stageTeamId); }
-            else { assignStageTeam($conn,$stageGroupId,$stageTeamId); }
+            if(!empty($_POST['unassign'])) { moveStageTeamToGroup($conn,(int)$stageGroup['stage_id'],$stageTeamId,null); }
+            else { moveStageTeamToGroup($conn,(int)$stageGroup['stage_id'],$stageTeamId,$stageGroupId); }
             auditLog($conn,'Assign Stage Team',"Set team ID $stageTeamId in stage group ID $stageGroupId (league ID $id)");
             $_SESSION['setup_flash']=['success','Stage membership updated.'];
         } elseif(isset($_POST['promoteQualifiers'])){
@@ -1082,6 +1082,275 @@ include 'includes/header.php';
                 Swal.fire('Matches created', res.msg, 'success').then(function () { window.location.reload(); });
             });
         });
+    }
+    /* 6. Teams step: manual group draw.
+          Drag a team card into a group (or back to Unassigned) and the move is
+          saved immediately through the scheduling endpoint. Each card's
+          "Move to" menu runs the same save, so touch and keyboard users are
+          not left out. */
+    var drawRoot = document.querySelector('[data-lsp-draw]');
+    if (drawRoot) {
+        var drawLocked = drawRoot.getAttribute('data-locked') === '1';
+        var drawStageId = parseInt(drawRoot.getAttribute('data-stage-id') || '0', 10);
+        var drawLeagueId = <?= (int) $id ?>;
+        var drawCsrf = <?= json_encode(csrfToken()) ?>;
+        var drawApproved = <?= (int) $approvedTeamCount ?>;
+        var drawStatus = drawRoot.querySelector('[data-lsp-draw-status]');
+        var drawContainers = Array.prototype.slice.call(
+            drawRoot.querySelectorAll('[data-lsp-draw-group], [data-lsp-draw-pool]')
+        );
+
+        var drawSetStatus = function (message, tone) {
+            if (!drawStatus) return;
+            drawStatus.textContent = message || '';
+            drawStatus.classList.toggle('is-ok', tone === 'ok');
+            drawStatus.classList.toggle('is-error', tone === 'error');
+        };
+
+        var drawListOf = function (container) {
+            return container ? container.querySelector('[data-lsp-draw-list]') : null;
+        };
+
+        var drawRefreshEmpty = function (container) {
+            var list = drawListOf(container);
+            if (!list) return;
+            var empty = list.querySelector('[data-lsp-draw-empty]');
+            if (empty) empty.hidden = list.querySelector('[data-lsp-team-card]') !== null;
+        };
+
+        var drawCardsIn = function (container) {
+            var list = drawListOf(container);
+            return list ? Array.prototype.slice.call(list.querySelectorAll('[data-lsp-team-card]')) : [];
+        };
+
+        var drawGroupChoices = function () {
+            var choices = [];
+            drawContainers.forEach(function (container) {
+                var groupId = container.getAttribute('data-stage-group-id') || '0';
+                var nameEl = container.querySelector('.lsp-draw-group-head b');
+                choices.push({
+                    id: groupId,
+                    name: groupId === '0' ? 'Unassigned' : (nameEl ? nameEl.textContent : 'Group #' + groupId)
+                });
+            });
+            return choices;
+        };
+
+        var drawSyncMoveMenus = function () {
+            var choices = drawGroupChoices();
+            drawRoot.querySelectorAll('[data-lsp-team-card]').forEach(function (card) {
+                var details = card.querySelector('.lsp-team-move');
+                var menu = details ? details.querySelector('.lsp-team-move-menu') : null;
+                if (!details || !menu) return;
+                var container = card.closest('[data-lsp-draw-group], [data-lsp-draw-pool]');
+                var currentGroupId = container ? (container.getAttribute('data-stage-group-id') || '0') : '0';
+                var teamId = card.getAttribute('data-team-id') || '';
+                menu.innerHTML = '';
+                var visible = 0;
+                choices.forEach(function (choice) {
+                    if (choice.id === currentGroupId) return;
+                    var button = document.createElement('button');
+                    button.type = 'button';
+                    button.setAttribute('data-lsp-move-team', teamId);
+                    button.setAttribute('data-lsp-move-target', choice.id);
+                    button.textContent = choice.name;
+                    menu.appendChild(button);
+                    visible++;
+                });
+                details.hidden = visible === 0;
+            });
+        };
+
+        var drawRefreshCounters = function () {
+            var placedIds = {};
+            drawContainers.forEach(function (container) {
+                var cards = drawCardsIn(container);
+                var groupId = container.getAttribute('data-stage-group-id') || '0';
+                var badge = container.querySelector('[data-lsp-group-count]');
+                if (badge) badge.textContent = cards.length;
+                if (groupId !== '0') {
+                    cards.forEach(function (card) {
+                        var teamId = card.getAttribute('data-team-id');
+                        if (teamId) placedIds[teamId] = true;
+                    });
+                }
+                drawRefreshEmpty(container);
+            });
+
+            var placed = Object.keys(placedIds).length;
+            var percent = drawApproved > 0 ? Math.round(Math.min(1, placed / drawApproved) * 100) : 0;
+            document.querySelectorAll('[data-lsp-draw-summary]').forEach(function (el) {
+                el.textContent = placed + ' of ' + drawApproved + ' teams placed';
+            });
+            document.querySelectorAll('[data-lsp-draw-hint]').forEach(function (el) {
+                el.textContent = placed >= drawApproved
+                    ? 'Teams are ready.'
+                    : (drawLocked ? 'The draw is locked.' : 'Drag a team into a group below.');
+            });
+            document.querySelectorAll('[data-lsp-draw-percent]').forEach(function (el) {
+                el.textContent = percent + '%';
+            });
+            var progress = document.querySelector('[data-lsp-draw-progress]');
+            if (progress) progress.style.width = percent + '%';
+            var progressWrap = document.querySelector('[data-lsp-draw-progress-wrap]');
+            if (progressWrap) progressWrap.setAttribute('aria-label', placed + ' of ' + drawApproved + ' teams placed');
+            var detail = document.querySelector('[data-lsp-draw-detail]');
+            if (detail) detail.textContent = placed + ' of ' + drawApproved + ' placed';
+            drawSyncMoveMenus();
+        };
+
+        var drawRemoveDuplicates = function (teamId, keepCard) {
+            drawRoot.querySelectorAll('[data-lsp-team-card]').forEach(function (card) {
+                if (card === keepCard || card.getAttribute('data-team-id') !== teamId) return;
+                var container = card.closest('[data-lsp-draw-group], [data-lsp-draw-pool]');
+                if (card.parentNode) card.parentNode.removeChild(card);
+                if (container) drawRefreshEmpty(container);
+            });
+        };
+
+        var drawRevert = function (card, originList, originNext, originContainer, targetContainer) {
+            if (originNext && originNext.parentNode === originList) {
+                originList.insertBefore(card, originNext);
+            } else {
+                originList.appendChild(card);
+            }
+            card.classList.remove('is-saving');
+            drawRefreshEmpty(originContainer);
+            drawRefreshEmpty(targetContainer);
+            drawRefreshCounters();
+        };
+
+        var drawMoveCard = function (card, targetContainer) {
+            if (!card || !targetContainer || drawLocked) return;
+            var originContainer = card.closest('[data-lsp-draw-group], [data-lsp-draw-pool]');
+            if (!originContainer || originContainer === targetContainer) return;
+            if (card.classList.contains('is-saving')) return;
+
+            var originList = drawListOf(originContainer);
+            var targetList = drawListOf(targetContainer);
+            if (!originList || !targetList) return;
+
+            var originNext = card.nextSibling;
+            var teamId = card.getAttribute('data-team-id') || '';
+            var targetGroupId = targetContainer.getAttribute('data-stage-group-id') || '0';
+
+            targetList.appendChild(card);
+            card.classList.add('is-saving');
+            drawRefreshEmpty(originContainer);
+            drawRefreshEmpty(targetContainer);
+            drawRefreshCounters();
+            drawSetStatus('Saving…', '');
+
+            $.ajax({
+                url: 'action/schedulingAction.php',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    moveStageTeam: 1,
+                    league_id: drawLeagueId,
+                    stage_id: drawStageId,
+                    team_id: teamId,
+                    stage_group_id: targetGroupId,
+                    csrf_token: drawCsrf
+                },
+                success: function (res) {
+                    if (!res || res.status !== 200) {
+                        drawRevert(card, originList, originNext, originContainer, targetContainer);
+                        drawSetStatus((res && res.msg) || 'The team could not be moved.', 'error');
+                        return;
+                    }
+                    card.classList.remove('is-saving');
+                    drawRemoveDuplicates(teamId, card);
+                    drawRefreshEmpty(originContainer);
+                    drawRefreshEmpty(targetContainer);
+                    drawRefreshCounters();
+                    drawSetStatus('Saved', 'ok');
+                    window.setTimeout(function () {
+                        if (drawStatus && drawStatus.textContent === 'Saved') drawSetStatus('', '');
+                    }, 1800);
+                },
+                error: function (xhr) {
+                    drawRevert(card, originList, originNext, originContainer, targetContainer);
+                    var message = (xhr.responseJSON && xhr.responseJSON.msg)
+                        || 'The team could not be moved. Refresh the page and try again.';
+                    drawSetStatus(message, 'error');
+                }
+            });
+        };
+
+        if (!drawLocked) {
+            drawRoot.addEventListener('dragstart', function (event) {
+                var card = event.target.closest('[data-lsp-team-card]');
+                if (!card || card.classList.contains('is-saving')) {
+                    event.preventDefault();
+                    return;
+                }
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', card.getAttribute('data-team-id') || '');
+                }
+                card.classList.add('is-dragging');
+            });
+
+            drawRoot.addEventListener('dragend', function (event) {
+                var card = event.target.closest('[data-lsp-team-card]');
+                if (card) card.classList.remove('is-dragging');
+                drawContainers.forEach(function (container) {
+                    container.classList.remove('is-drop-target');
+                });
+            });
+
+            drawContainers.forEach(function (container) {
+                container.addEventListener('dragover', function (event) {
+                    event.preventDefault();
+                    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+                    container.classList.add('is-drop-target');
+                });
+                container.addEventListener('dragleave', function (event) {
+                    if (!container.contains(event.relatedTarget)) {
+                        container.classList.remove('is-drop-target');
+                    }
+                });
+                container.addEventListener('drop', function (event) {
+                    event.preventDefault();
+                    container.classList.remove('is-drop-target');
+                    var card = drawRoot.querySelector('[data-lsp-team-card].is-dragging');
+                    if (!card && event.dataTransfer) {
+                        var draggedId = event.dataTransfer.getData('text/plain');
+                        if (draggedId) {
+                            card = drawRoot.querySelector('[data-lsp-team-card][data-team-id="' + draggedId + '"]');
+                        }
+                    }
+                    if (card) drawMoveCard(card, container);
+                });
+            });
+        }
+
+        drawRoot.addEventListener('click', function (event) {
+            var moveButton = event.target.closest('[data-lsp-move-target]');
+            if (!moveButton) return;
+            event.preventDefault();
+            var card = moveButton.closest('[data-lsp-team-card]');
+            var targetId = moveButton.getAttribute('data-lsp-move-target') || '0';
+            var targetContainer = null;
+            drawContainers.forEach(function (container) {
+                if (!targetContainer && container.getAttribute('data-stage-group-id') === targetId) {
+                    targetContainer = container;
+                }
+            });
+            var details = moveButton.closest('details');
+            if (details) details.open = false;
+            if (card && targetContainer) drawMoveCard(card, targetContainer);
+        });
+
+        document.addEventListener('click', function (event) {
+            if (event.target.closest('.lsp-team-move')) return;
+            drawRoot.querySelectorAll('.lsp-team-move[open]').forEach(function (details) {
+                details.open = false;
+            });
+        });
+
+        drawRefreshCounters();
     }
 })();
 </script>

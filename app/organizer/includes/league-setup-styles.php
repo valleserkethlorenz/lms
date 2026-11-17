@@ -287,7 +287,8 @@
     /* ---------- Guided step panels (one at a time) ------------------------ */
     .lsp-page .lsp-steps-wrap { display:flex; flex-direction:column; gap:12px; margin:0 0 24px; scroll-margin-top:80px; }
     .lsp-page .lsp-step-card { display:none; border:1px solid var(--lsp-line); border-radius:var(--lsp-r); background:#fff; box-shadow:0 2px 10px rgba(9,23,60,.04); overflow:hidden; transition:border-color .2s ease, box-shadow .2s ease; }
-    .lsp-page .lsp-step-card.is-active { display:block; border-color:var(--lsp-navy); box-shadow:var(--lsp-shadow); animation:lspStepIn .25s ease both; }
+    .lsp-page .lsp-step-card.is-active { display:block; border-color:var(--lsp-navy); box-shadow:var(--lsp-shadow); animation:lspStepIn .25s ease both; overflow:visible; }
+    .lsp-page .lsp-step-card.is-active .lsp-step-summary { border-radius:var(--lsp-r) var(--lsp-r) 0 0; }
     @keyframes lspStepIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
     @media (prefers-reduced-motion:reduce) { .lsp-page .lsp-step-card.is-active { animation:none; } }
     .lsp-page .lsp-step-card.is-current { border-color:var(--lsp-navy); }
@@ -486,6 +487,45 @@
     .lsp-page .lsp-simple-next > b { display:block; font-size:var(--lsp-fs-body); color:var(--lsp-ink); }
     .lsp-page .lsp-simple-done { display:flex; align-items:center; gap:8px; margin:14px 0 10px; padding:12px 14px; border:1px solid var(--lsp-ok-line); border-radius:var(--lsp-r-sm); background:var(--lsp-ok-soft); font-size:var(--lsp-fs-help); font-weight:600; color:var(--lsp-ok); }
     .lsp-page .lsp-simple-links { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--lsp-line-soft); }
+    /* ---------- Manual group draw (Teams step) ----------------------------- */
+    .lsp-page .lsp-draw { margin-top:16px; padding-top:14px; border-top:1px solid var(--lsp-line-soft); }
+    .lsp-page .lsp-draw-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+    .lsp-page .lsp-draw-head > b { font-size:var(--lsp-fs-body); color:var(--lsp-ink); }
+    .lsp-page .lsp-draw-head .lsp-help { margin:0; }
+    .lsp-page .lsp-draw-status { margin-left:auto; min-height:16px; font-size:var(--lsp-fs-label); font-weight:600; color:var(--lsp-muted); }
+    .lsp-page .lsp-draw-status.is-ok { color:var(--lsp-ok); }
+    .lsp-page .lsp-draw-status.is-error { color:#b42335; }
+    .lsp-page .lsp-draw-pool { margin:0 0 12px; padding:12px 14px; border:1px dashed #b9c8dd; border-radius:var(--lsp-r); background:var(--lsp-soft-blue); transition:border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+    .lsp-page .lsp-draw-pool.is-drop-target { border-color:var(--lsp-blue); background:#eef5ff; box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    .lsp-page .lsp-draw-groups { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+    .lsp-page .lsp-draw-group { display:flex; flex-direction:column; gap:9px; padding:12px 13px; border:1px solid var(--lsp-line); border-radius:var(--lsp-r); background:#fff; transition:border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+    .lsp-page .lsp-draw-group.is-drop-target { border-color:var(--lsp-blue); background:var(--lsp-soft-blue); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    .lsp-page .lsp-draw-group-head { display:flex; align-items:center; gap:8px; }
+    .lsp-page .lsp-draw-group-head b { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--lsp-fs-help); color:var(--lsp-ink); }
+    .lsp-page .lsp-draw-list { display:flex; flex-direction:column; gap:7px; min-height:40px; }
+    .lsp-page .lsp-draw-pool .lsp-draw-list { flex-direction:row; flex-wrap:wrap; }
+    .lsp-page .lsp-draw-pool .lsp-draw-empty { flex:1 1 100%; }
+    .lsp-page .lsp-team-card { position:relative; display:flex; align-items:center; gap:7px; padding:7px 9px; border:1px solid var(--lsp-line-soft); border-radius:var(--lsp-r-sm); background:#fff; font-size:var(--lsp-fs-help); cursor:grab; user-select:none; }
+    .lsp-page .lsp-team-card[draggable="true"]:hover { border-color:#c7d7ec; background:var(--lsp-soft); }
+    .lsp-page .lsp-team-card.is-dragging { opacity:.45; }
+    .lsp-page .lsp-team-card.is-saving { opacity:.6; pointer-events:none; }
+    .lsp-page .lsp-draw[data-locked="1"] .lsp-team-card { cursor:default; }
+    .lsp-page .lsp-team-grip { flex:0 0 auto; color:var(--lsp-faint); font-size:13px; }
+    .lsp-page .lsp-team-name { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; color:var(--lsp-ink); }
+    .lsp-page .lsp-team-seed { flex:0 0 auto; padding:1px 6px; border-radius:var(--lsp-pill); background:#e8edf7; color:var(--lsp-ink-2); font-size:10px; font-weight:600; }
+    .lsp-page .lsp-team-move { position:relative; flex:0 0 auto; }
+    .lsp-page .lsp-team-move > summary { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; padding:0; border:1px solid var(--lsp-line-soft); border-radius:50%; background:#f8fafc; color:var(--lsp-muted); font-size:11px; list-style:none; cursor:pointer; }
+    .lsp-page .lsp-team-move > summary::-webkit-details-marker { display:none; }
+    .lsp-page .lsp-team-move > summary:hover, .lsp-page .lsp-team-move[open] > summary { border-color:var(--lsp-blue); color:var(--lsp-blue); }
+    .lsp-page .lsp-team-move > summary:focus-visible { outline:2px solid var(--lsp-blue); outline-offset:1px; }
+    .lsp-page .lsp-team-move-menu { position:absolute; right:0; top:calc(100% + 4px); z-index:20; min-width:170px; padding:5px; border:1px solid var(--lsp-line); border-radius:var(--lsp-r-sm); background:#fff; box-shadow:0 10px 26px rgba(9,23,60,.16); }
+    .lsp-page .lsp-team-move-menu button { display:block; width:100%; padding:6px 9px; border:0; border-radius:6px; background:none; color:var(--lsp-ink-2); font:inherit; font-size:var(--lsp-fs-label); font-weight:600; text-align:left; cursor:pointer; }
+    .lsp-page .lsp-team-move-menu button:hover, .lsp-page .lsp-team-move-menu button:focus { background:var(--lsp-soft-blue); color:var(--lsp-navy); outline:none; }
+    .lsp-page .lsp-draw-empty { margin:0; padding:11px 9px; border:1px dashed var(--lsp-line); border-radius:var(--lsp-r-sm); text-align:center; font-size:var(--lsp-fs-label); color:var(--lsp-faint); }
+    .lsp-page .lsp-draw-empty[hidden] { display:none; }
+    .lsp-page .lsp-team-move[hidden] { display:none; }
+
+
     .lsp-page .lsp-playoff-form { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:12px 0 6px; }
     .lsp-page .lsp-playoff-form label, .lsp-page .lsp-playoff-form span { font-size:var(--lsp-fs-help); color:var(--lsp-ink-2); margin:0; }
     .lsp-page .lsp-playoff-form .form-control { width:76px; }
@@ -516,6 +556,8 @@
         .lsp-page .lsp-stage-row-head { flex-wrap:wrap; }
         .lsp-page .lsp-stage-row-tools { margin-left:39px; }
         .lsp-page .lsp-format-grid { grid-template-columns:1fr; }
+        .lsp-page .lsp-draw-groups { grid-template-columns:1fr; }
+        .lsp-page .lsp-draw-status { width:100%; margin-left:0; }
         .lsp-page .lsp-wizard-steps { width:100%; justify-content:space-between; gap:8px; }
         .lsp-page .lsp-wizard-step a { font-size:var(--lsp-fs-label); }
     }

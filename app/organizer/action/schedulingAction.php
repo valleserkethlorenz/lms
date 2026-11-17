@@ -1062,6 +1062,98 @@ if ($protestIdParam > 0) {
         sendResponse(200, "Progression summary retrieved", ["summary" => $summary]);
         return;
     }
-    
+
+    /* Teams step: move one approved team into a group of the opening group
+       stage, or back to the unassigned pool (stage_group_id = 0). Every drop
+       on the Setup -> Teams draw board posts here so the draw is saved at once. */
+    if (isset($_POST['moveStageTeam'])) {
+        $stageId       = intval($_POST['stage_id'] ?? 0);
+        $teamId        = intval($_POST['team_id'] ?? 0);
+        $targetGroupId = max(0, intval($_POST['stage_group_id'] ?? 0));
+
+        $stage = getStage($conn, $stageId);
+        if (!$stage || (int)$stage['league_id'] !== $leagueId) {
+            sendResponse(404, 'Stage not found for this league.');
+            return;
+        }
+        if (!in_array((string)$stage['stage_type'], ['group', 'crossover'], true)) {
+            sendResponse(400, 'Teams can only be grouped in a group or pool stage.');
+            return;
+        }
+
+        $drawStages = getLeagueStages($conn, $leagueId);
+        if (empty($drawStages) || (int)$drawStages[0]['id'] !== $stageId) {
+            sendResponse(400, 'Only the opening group stage can be drawn by hand. Later stages receive their teams from the previous stage.');
+            return;
+        }
+
+        $drawMatchCount = 0;
+        if ($drawMatchStmt = $conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule
+                                             WHERE league_id = ? AND stage_id = ?
+                                               AND (is_archived = 0 OR is_archived IS NULL)")) {
+            $drawMatchStmt->bind_param('ii', $leagueId, $stageId);
+            $drawMatchStmt->execute();
+            $drawMatchCount = (int)($drawMatchStmt->get_result()->fetch_assoc()['c'] ?? 0);
+            $drawMatchStmt->close();
+        }
+        if ($drawMatchCount > 0) {
+            sendResponse(409, 'This stage already has ' . $drawMatchCount . ' fixture(s). Archive or delete them on Schedule before changing the draw.');
+            return;
+        }
+
+        $targetGroup = null;
+        if ($targetGroupId > 0) {
+            $targetGroup = getStageGroup($conn, $targetGroupId);
+            if (!$targetGroup || (int)$targetGroup['stage_id'] !== $stageId) {
+                sendResponse(404, 'That group does not belong to this stage.');
+                return;
+            }
+        }
+
+        $drawTeamStmt = $conn->prepare("SELECT id, team_name FROM tbl_team
+                                        WHERE id = ? AND league_id = ? AND LOWER(status) = 'approved'
+                                        LIMIT 1");
+        $drawTeamStmt->bind_param('ii', $teamId, $leagueId);
+        $drawTeamStmt->execute();
+        $drawTeam = $drawTeamStmt->get_result()->fetch_assoc();
+        $drawTeamStmt->close();
+        if (!$drawTeam) {
+            sendResponse(404, 'Approved team not found in this league.');
+            return;
+        }
+
+        $conn->begin_transaction();
+        try {
+            moveStageTeamToGroup($conn, $stageId, $teamId, $targetGroupId > 0 ? $targetGroupId : null);
+            $conn->commit();
+        } catch (Throwable $drawFailure) {
+            $conn->rollback();
+            sendResponse(500, 'The team could not be moved: ' . $drawFailure->getMessage());
+            return;
+        }
+
+        $drawTargetLabel = $targetGroup ? (string)$targetGroup['name'] : 'Unassigned';
+        auditLog($conn, 'Move Stage Team', "Moved team ID $teamId ({$drawTeam['team_name']}) to $drawTargetLabel in stage ID $stageId (league ID $leagueId)");
+
+        $drawGroupCounts = [];
+        $drawPlacedIds = [];
+        foreach (getStageGroups($conn, $stageId) as $drawGroup) {
+            $drawGroupId = (int)$drawGroup['id'];
+            $drawMembers = getStageGroupTeams($conn, $drawGroupId);
+            $drawGroupCounts[$drawGroupId] = count($drawMembers);
+            foreach ($drawMembers as $drawMember) {
+                $drawPlacedIds[(int)$drawMember['team_id']] = true;
+            }
+        }
+        $drawApproved = count(getApprovedTeams($conn, $leagueId));
+
+        sendResponse(200, $drawTeam['team_name'] . ' moved to ' . $drawTargetLabel . '.', [
+            'group_counts' => $drawGroupCounts,
+            'placed'       => count($drawPlacedIds),
+            'unassigned'   => max(0, $drawApproved - count($drawPlacedIds)),
+        ]);
+        return;
+    }
+
 sendResponse(400, "Invalid action");
 ?>

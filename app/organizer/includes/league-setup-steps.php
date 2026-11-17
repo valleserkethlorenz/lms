@@ -466,6 +466,68 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
     </div>
 </section>
 
+<?php
+/* Manual group draw (Teams step)
+   ------------------------------
+   Only the OPENING group/crossover stage can be drawn by hand. Later group
+   stages receive their teams through Advance qualifiers, so a draw board there
+   would fight the progression engine. The board is also read-only once the
+   stage has fixtures, because moving teams would leave those fixtures stale. */
+$wizardDrawStage      = $wizardRoundRobin;
+$wizardDrawGroups     = $wizardDrawStage ? array_values($wizardDrawStage['groups'] ?? []) : [];
+$wizardDrawStageId    = $wizardDrawStage ? (int) $wizardDrawStage['id'] : 0;
+$wizardDrawStats      = $wizardDrawStage
+    ? $wizardStageStats($wizardDrawStageId)
+    : ['matches' => 0, 'completed' => 0, 'complete' => false, 'percent' => 0];
+$wizardDrawLocked     = $wizardDrawStats['matches'] > 0;
+$wizardDrawIsOpening  = $wizardDrawStage !== null
+    && isset($stages[0])
+    && (int) ($stages[0]['id'] ?? 0) === $wizardDrawStageId;
+$wizardDrawUnplaced   = $wizardDrawStage ? array_diff_key($stageTeamNames, $wizardPlacedIds) : [];
+
+/* One team card, shared by the unassigned pool and every group container.
+   The move menu doubles as the touch/keyboard alternative to dragging. */
+$wizardTeamCard = static function (
+    int $teamId,
+    string $teamName,
+    $seed,
+    int $currentGroupId,
+    array $groupChoices,
+    bool $locked
+): string {
+    $escapedName = htmlspecialchars($teamName, ENT_QUOTES);
+    $card = '<div class="lsp-team-card" data-lsp-team-card data-team-id="' . $teamId
+        . '" data-team-name="' . $escapedName . '"' . ($locked ? '' : ' draggable="true"') . '>';
+    if (!$locked) {
+        $card .= '<i class="bi bi-grip-vertical lsp-team-grip" aria-hidden="true"></i>';
+    }
+    $card .= '<span class="lsp-team-name">' . $escapedName . '</span>';
+    if ($seed !== null && $seed !== '') {
+        $card .= '<span class="lsp-team-seed">#' . (int) $seed . '</span>';
+    }
+    if (!$locked) {
+        $card .= '<details class="lsp-team-move" draggable="false">'
+            . '<summary aria-label="Move ' . $escapedName . ' to another group" title="Move to another group">'
+            . '<i class="bi bi-arrow-down-up" aria-hidden="true"></i></summary>'
+            . '<div class="lsp-team-move-menu">';
+        foreach ($groupChoices as $groupChoice) {
+            $choiceId = (int) ($groupChoice['id'] ?? 0);
+            if ($choiceId <= 0 || $choiceId === $currentGroupId) continue;
+            $choiceName = htmlspecialchars((string) ($groupChoice['name'] ?? ('Group #' . $choiceId)), ENT_QUOTES);
+            $card .= '<button type="button" data-lsp-move-team="' . $teamId
+                . '" data-lsp-move-target="' . $choiceId . '">' . $choiceName . '</button>';
+        }
+        if ($currentGroupId !== 0) {
+            $card .= '<button type="button" data-lsp-move-team="' . $teamId
+                . '" data-lsp-move-target="0">Unassigned</button>';
+        }
+        $card .= '</div></details>';
+    }
+    $card .= '</div>';
+    return $card;
+};
+?>
+
 <?php [$wizardTeamsState, $wizardTeamsStatus] = $wizardState('teams'); ?>
 <!-- ==================== STEP 2 · TEAMS ==================== -->
 <section class="lsp-step-card <?= $wizardTeamsState ?><?= $setupActiveStep === 'teams' ? ' is-active' : '' ?>" id="step-teams" data-step-panel="teams" aria-labelledby="step-teams-title">
@@ -473,7 +535,7 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
         <span class="lsp-step-index"><?= $wizardStepNumber('teams') ?></span>
         <span class="lsp-step-heading">
             <span class="lsp-step-title" id="step-teams-title">Teams</span>
-            <span class="lsp-step-detail">
+            <span class="lsp-step-detail" data-lsp-draw-detail>
                 <?= $wizardRoundRobin
                     ? $wizardPlacedCount . ' of ' . $approvedTeamCount . ' placed'
                     : $approvedTeamCount . ' approved team' . ($approvedTeamCount === 1 ? '' : 's') ?>
@@ -482,7 +544,11 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
         <span class="lsp-step-status <?= $wizardTeamsState ?>"><?= $wizardTeamsStatus ?></span>
     </div>
     <div class="lsp-step-body">
-        <p class="lsp-lead">Approved teams go into the opening group.</p>
+        <p class="lsp-lead"><?= $wizardDrawIsOpening && $wizardDrawGroups
+            ? ($wizardDrawLocked
+                ? 'The draw is locked because this stage already has fixtures.'
+                : 'Drag each team into the group it should play in. Every drop saves automatically.')
+            : 'Approved teams go into the opening group.' ?></p>
 
         <?php if (!$stages): ?>
             <div class="lsp-empty">
@@ -507,37 +573,96 @@ $wizardGenerationForm = static function (array $stage) use ($wizardConnection, $
             <div class="lsp-simple-summary">
                 <span class="lsp-simple-summary-icon"><i class="bi bi-people-fill" aria-hidden="true"></i></span>
                 <span class="lsp-simple-summary-copy">
-                    <b><?= $wizardPlacedCount ?> of <?= $approvedTeamCount ?> teams placed</b>
-                    <small><?= $wizardPlacedCount >= $approvedTeamCount ? 'Teams are ready.' : 'Fill the group automatically.' ?></small>
+                    <b data-lsp-draw-summary><?= $wizardPlacedCount ?> of <?= $approvedTeamCount ?> teams placed</b>
+                    <small data-lsp-draw-hint><?= $wizardPlacedCount >= $approvedTeamCount
+                        ? 'Teams are ready.'
+                        : ($wizardDrawIsOpening
+                            ? ($wizardDrawLocked ? 'The draw is locked.' : 'Drag a team into a group below, or fill automatically.')
+                            : 'Teams for this stage are advanced from the previous stage.') ?></small>
                 </span>
-                <span class="lsp-simple-summary-value"><?= $wizardTeamPercent ?>%</span>
+                <span class="lsp-simple-summary-value" data-lsp-draw-percent><?= $wizardTeamPercent ?>%</span>
             </div>
-            <div class="lp-progress lsp-simple-progress" role="img" aria-label="<?= $wizardPlacedCount ?> of <?= $approvedTeamCount ?> teams placed">
-                <span style="width:<?= $wizardTeamPercent ?>%"></span>
+            <div class="lp-progress lsp-simple-progress" role="img" aria-label="<?= $wizardPlacedCount ?> of <?= $approvedTeamCount ?> teams placed" data-lsp-draw-progress-wrap>
+                <span style="width:<?= $wizardTeamPercent ?>%" data-lsp-draw-progress></span>
             </div>
 
-            <?php if ($wizardPlacedCount < $approvedTeamCount): ?>
-                <?php if (!empty($wizardRoundRobin['groups'])): ?>
-                    <form method="post" class="lsp-actions">
-                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
-                        <input type="hidden" name="league_id" value="<?= (int) $id ?>">
-                        <input type="hidden" name="stage_id" value="<?= (int) $wizardRoundRobin['id'] ?>">
-                        <button name="seedStageTeams" class="btn btn-primary"><i class="bi bi-shuffle me-1" aria-hidden="true"></i>Fill the group automatically</button>
-                    </form>
-                <?php else: ?>
-                    <p class="lsp-help">This stage has no group yet. Re-apply a group format in Step 1.</p>
-                <?php endif; ?>
+            <?php if ($wizardDrawIsOpening && $wizardPlacedCount === 0 && !$wizardDrawLocked && !empty($wizardRoundRobin['groups'])): ?>
+                <form method="post" class="lsp-actions">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
+                    <input type="hidden" name="league_id" value="<?= (int) $id ?>">
+                    <input type="hidden" name="stage_id" value="<?= (int) $wizardRoundRobin['id'] ?>">
+                    <button name="seedStageTeams" class="btn btn-primary"><i class="bi bi-shuffle me-1" aria-hidden="true"></i>Fill the group automatically</button>
+                </form>
             <?php endif; ?>
 
             <?php if (!empty($wizardRoundRobin['groups'])): ?>
-                <div class="lsp-simple-groups">
-                    <?php foreach ($wizardRoundRobin['groups'] as $wizardGroupRow): ?>
-                        <span class="lsp-group-chip">
-                            <b><?= htmlspecialchars((string) $wizardGroupRow['name']) ?></b>
-                            <small><?= count($wizardGroupRow['teams'] ?? []) ?> team<?= count($wizardGroupRow['teams'] ?? []) === 1 ? '' : 's' ?></small>
-                        </span>
-                    <?php endforeach; ?>
-                </div>
+                <?php if (!$wizardDrawIsOpening): ?>
+                    <div class="lsp-note">
+                        <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+                        <span><b>This group stage is fed by the previous stage.</b> Place its teams with <b>Advance qualifiers</b> on the Matches step — a manual draw here would overwrite the progression.</span>
+                    </div>
+                    <div class="lsp-simple-groups">
+                        <?php foreach ($wizardRoundRobin['groups'] as $wizardGroupRow): ?>
+                            <span class="lsp-group-chip">
+                                <b><?= htmlspecialchars((string) $wizardGroupRow['name']) ?></b>
+                                <small><?= count($wizardGroupRow['teams'] ?? []) ?> team<?= count($wizardGroupRow['teams'] ?? []) === 1 ? '' : 's' ?></small>
+                            </span>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <?php if ($wizardDrawLocked): ?>
+                        <div class="lsp-note">
+                            <i class="bi bi-lock-fill" aria-hidden="true"></i>
+                            <span><b>Manual grouping is locked.</b> <?= (int) $wizardDrawStats['matches'] ?> fixture<?= $wizardDrawStats['matches'] === 1 ? '' : 's' ?> already exist in this stage. Archive or delete them on <a href="schedule.php?id=<?= (int) $id ?>">Schedule</a> before changing the draw.</span>
+                        </div>
+                    <?php endif; ?>
+
+                    <div class="lsp-draw" data-lsp-draw data-stage-id="<?= (int) $wizardDrawStageId ?>" data-locked="<?= $wizardDrawLocked ? '1' : '0' ?>">
+                        <div class="lsp-draw-head">
+                            <b>Manual grouping</b>
+                            <span class="lsp-help"><?= $wizardDrawLocked
+                                ? 'Read-only: this stage already has fixtures.'
+                                : 'Drag a team card into a group. The draw saves automatically.' ?></span>
+                            <span class="lsp-draw-status" data-lsp-draw-status role="status" aria-live="polite"></span>
+                        </div>
+
+                        <section class="lsp-draw-pool" data-lsp-draw-pool data-stage-group-id="0" aria-label="Unassigned teams">
+                            <div class="lsp-draw-group-head">
+                                <b>Unassigned</b>
+                                <span class="lsp-group-count" data-lsp-group-count="0"><?= count($wizardDrawUnplaced) ?></span>
+                            </div>
+                            <div class="lsp-draw-list" data-lsp-draw-list>
+                                <?php foreach ($wizardDrawUnplaced as $wizardUnplacedId => $wizardUnplacedName): ?>
+                                    <?= $wizardTeamCard((int) $wizardUnplacedId, (string) $wizardUnplacedName, null, 0, $wizardDrawGroups, $wizardDrawLocked) ?>
+                                <?php endforeach; ?>
+                                <p class="lsp-draw-empty" data-lsp-draw-empty <?= $wizardDrawUnplaced ? 'hidden' : '' ?>>Drop a team here to remove it from a group.</p>
+                            </div>
+                        </section>
+
+                        <div class="lsp-draw-groups">
+                            <?php foreach ($wizardDrawGroups as $wizardGroupRow): ?>
+                                <section class="lsp-draw-group" data-lsp-draw-group data-stage-group-id="<?= (int) $wizardGroupRow['id'] ?>" aria-label="<?= htmlspecialchars((string) $wizardGroupRow['name'], ENT_QUOTES) ?>">
+                                    <div class="lsp-draw-group-head">
+                                        <b><?= htmlspecialchars((string) $wizardGroupRow['name']) ?></b>
+                                        <span class="lsp-group-count" data-lsp-group-count="<?= (int) $wizardGroupRow['id'] ?>"><?= count($wizardGroupRow['teams'] ?? []) ?></span>
+                                    </div>
+                                    <div class="lsp-draw-list" data-lsp-draw-list>
+                                        <?php foreach (($wizardGroupRow['teams'] ?? []) as $wizardMember): ?>
+                                            <?= $wizardTeamCard((int) $wizardMember['team_id'], (string) $wizardMember['team_name'], $wizardMember['seed'] ?? null, (int) $wizardGroupRow['id'], $wizardDrawGroups, $wizardDrawLocked) ?>
+                                        <?php endforeach; ?>
+                                        <p class="lsp-draw-empty" data-lsp-draw-empty <?= !empty($wizardGroupRow['teams']) ? 'hidden' : '' ?>>Drop a team here</p>
+                                    </div>
+                                </section>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <?php if (!$wizardDrawLocked): ?>
+                        <noscript><p class="lsp-help">Enable JavaScript to drag teams between groups, or use “Fill the group automatically” above.</p></noscript>
+                    <?php endif; ?>
+                <?php endif; ?>
+            <?php else: ?>
+                <p class="lsp-help">This stage has no group yet. Re-apply a group format in Step 1.</p>
             <?php endif; ?>
         <?php endif; ?>
 
