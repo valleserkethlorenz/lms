@@ -3,6 +3,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 require_once __DIR__ . '/../../config/dbconnect.php';
 require_once __DIR__ . '/../../config/auth_guard.php';
 require_once __DIR__ . '/../../includes/storageService.php';
+require_once __DIR__ . '/../../includes/profileImage.php';
 require_once __DIR__ . '/../../includes/summaryStrip.php';
 requireRole([3]);
 requireActiveAccount($conn);
@@ -69,35 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['createUser'])) {
         } else {
             // Handle profile image upload
             $profileImagePath = null;
-            if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
-                $allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-                $fileType = $_FILES['profile_image']['type'];
-                $fileSize = $_FILES['profile_image']['size'];
-                
-                if (!in_array($fileType, $allowedTypes)) {
-                    $msg = '<div class="alert alert-danger">Invalid file type. Only JPG, PNG, and GIF are allowed.</div>';
-                } elseif ($fileSize > 2 * 1024 * 1024) {
-                    $msg = '<div class="alert alert-danger">File size must be less than 2MB.</div>';
-                } elseif (StorageService::isEnabled()) {
-                    try {
-                        $cloudProfile = StorageService::upload($_FILES['profile_image']['tmp_name'], 'profiles', [
-                            'public_id' => uniqid('profile_'),
-                        ]);
-                        $profileImagePath = $cloudProfile['secure_url'];
-                    } catch (\Throwable $e) {
-                        $msg = '<div class="alert alert-danger">Error uploading profile image.</div>';
-                    }
-                } else {
-                    $uploadDir = __DIR__ . '/../../uploads/profiles/';
-                    if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-                    $ext = pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION);
-                    $filename = uniqid('profile_') . '.' . $ext;
-                    $targetPath = $uploadDir . $filename;
-                    if (move_uploaded_file($_FILES['profile_image']['tmp_name'], $targetPath)) {
-                        $profileImagePath = '../../uploads/profiles/' . $filename;
-                    } else {
-                        $msg = '<div class="alert alert-danger">Error uploading profile image.</div>';
-                    }
+            if (isset($_FILES['profile_image']) && is_array($_FILES['profile_image'])
+                && (int)($_FILES['profile_image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                try {
+                    $profileImagePath = profileImageStoreUpload($_FILES['profile_image'], 0, dirname(__DIR__, 2));
+                } catch (\Throwable $e) {
+                    $msg = '<div class="alert alert-danger">' . htmlspecialchars($e->getMessage()) . '</div>';
                 }
             }
             
@@ -111,6 +89,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['createUser'])) {
                     auditLog($conn, 'Create Account', "Created $roleName account for $fname $lname ($email)");
                     $msg = '<div class="alert alert-success">Account created successfully.</div>';
                 } else {
+                    // The insert failed: remove the newly stored image so it does not orphan.
+                    if ($profileImagePath !== null) {
+                        profileImageDeleteStored($profileImagePath, dirname(__DIR__, 2));
+                    }
                     $msg = '<div class="alert alert-danger">Error: ' . htmlspecialchars($stmt2->error) . '</div>';
                 }
                 $stmt2->close();
@@ -153,64 +135,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editUser'])) {
         // Handle profile image upload
         $profileImagePath = null;
         $uploadImage = false;
-        if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] === UPLOAD_ERR_OK) {
-            $allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-            $fileType = $_FILES['profile_image']['type'];
-            $fileSize = $_FILES['profile_image']['size'];
-            
-            if (!in_array($fileType, $allowedTypes)) {
-                $msg = '<div class="alert alert-danger">Invalid file type. Only JPG, PNG, and GIF are allowed.</div>';
-            } elseif ($fileSize > 2 * 1024 * 1024) {
-                $msg = '<div class="alert alert-danger">File size must be less than 2MB.</div>';
-            } elseif (StorageService::isEnabled()) {
-                try {
-                    $cloudProfile = StorageService::upload($_FILES['profile_image']['tmp_name'], 'profiles', [
-                        'public_id' => uniqid('profile_'),
-                    ]);
-                    $profileImagePath = $cloudProfile['secure_url'];
-                    $uploadImage = true;
-                    // Delete old image from Cloudinary if it was a cloud URL
-                    $oldImgStmt = $conn->prepare("SELECT profile_image FROM tbl_user WHERE id=?");
-                    $oldImgStmt->bind_param('i', $uid);
-                    $oldImgStmt->execute();
-                    $oldImgResult = $oldImgStmt->get_result()->fetch_assoc();
-                    $oldImgStmt->close();
-                    $oldVal = $oldImgResult['profile_image'] ?? '';
-                    if ($oldVal !== '' && StorageService::isCloudinary($oldVal)) {
-                        // Extract public_id from the URL
-                        $parsed = parse_url($oldVal);
-                        $pathParts = explode('/', trim($parsed['path'] ?? '', '/'));
-                        // Remove the cloud_name prefix and version, get remaining as public_id
-                        $publicIdParts = array_slice($pathParts, 2); // skip cloud_name and resource_type
-                        $publicId = implode('/', $publicIdParts);
-                        $publicId = preg_replace('/\.[^.]+$/', '', $publicId);
-                        if ($publicId) StorageService::delete($publicId);
-                    }
-                } catch (\Throwable $e) {
-                    $msg = '<div class="alert alert-danger">Error uploading profile image.</div>';
-                }
-            } else {
-                $uploadDir = __DIR__ . '/../../uploads/profiles/';
-                if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-                $ext = pathinfo($_FILES['profile_image']['name'], PATHINFO_EXTENSION);
-                $filename = uniqid('profile_') . '.' . $ext;
-                $targetPath = $uploadDir . $filename;
-                if (move_uploaded_file($_FILES['profile_image']['tmp_name'], $targetPath)) {
-                    $profileImagePath = '../../uploads/profiles/' . $filename;
-                    $uploadImage = true;
-                    // Delete old image if exists
-                    $oldImgStmt = $conn->prepare("SELECT profile_image FROM tbl_user WHERE id=?");
-                    $oldImgStmt->bind_param('i', $uid);
-                    $oldImgStmt->execute();
-                    $oldImgResult = $oldImgStmt->get_result()->fetch_assoc();
-                    $oldImgStmt->close();
-                    if (!empty($oldImgResult['profile_image'])) {
-                        $oldFilePath = __DIR__ . '/../../' . $oldImgResult['profile_image'];
-                        if (file_exists($oldFilePath)) @unlink($oldFilePath);
-                    }
-                } else {
-                    $msg = '<div class="alert alert-danger">Error uploading profile image.</div>';
-                }
+        $previousPhoto = '';
+        if (isset($_FILES['profile_image']) && is_array($_FILES['profile_image'])
+            && (int)($_FILES['profile_image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            $oldImgStmt = $conn->prepare("SELECT profile_image FROM tbl_user WHERE id=?");
+            $oldImgStmt->bind_param('i', $uid);
+            $oldImgStmt->execute();
+            $oldImgResult = $oldImgStmt->get_result()->fetch_assoc();
+            $oldImgStmt->close();
+            $previousPhoto = (string)($oldImgResult['profile_image'] ?? '');
+
+            try {
+                $profileImagePath = profileImageStoreUpload($_FILES['profile_image'], (int)$uid, dirname(__DIR__, 2));
+                $uploadImage = true;
+            } catch (\Throwable $e) {
+                $msg = '<div class="alert alert-danger">' . htmlspecialchars($e->getMessage()) . '</div>';
             }
         }
         
@@ -223,8 +162,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['editUser'])) {
                 $stmt->bind_param('ssssssssissiiisi', $fname, $lname, $mname, $suffix, $gender, $dob, $phone, $address, $yearsExp, $credentials, $email, $role, $stat, $uid, $email, $uid);
             }
             if ($stmt->execute()) {
+                // Remove the replaced photo once the database is updated.
+                if ($uploadImage && $previousPhoto !== '' && $previousPhoto !== (string)$profileImagePath) {
+                    profileImageDeleteStored($previousPhoto, dirname(__DIR__, 2));
+                }
                 auditLog($conn, 'Edit Account', "Updated account ID $uid: $fname $lname, role=$role, stat=$stat");
                 $msg = '<div class="alert alert-success">Account updated.</div>';
+            } else {
+                // The update was rejected: drop the newly stored image.
+                if ($uploadImage && $profileImagePath !== null) {
+                    profileImageDeleteStored($profileImagePath, dirname(__DIR__, 2));
+                }
             }
             $stmt->close();
         }
@@ -277,7 +225,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggleStat'])) {
 // Fetch all non-admin users
 $users = [];
 $res = $conn->query("SELECT id,fname,lname,mname,suffix,gender,date_of_birth,email,phone,address,years_experience,credentials,role,stat,created,profile_image FROM tbl_user WHERE role != '3' ORDER BY created DESC");
-if ($res) while ($r = $res->fetch_assoc()) $users[] = $r;
+if ($res) while ($r = $res->fetch_assoc()) {
+    // Resolve the stored photo once so every admin view uses the same value and
+    // stale paths (missing files) fall back to initials instead of a broken image.
+    $r['profile_image_src'] = profileImageWebPath($r['profile_image'] ?? '');
+    $users[] = $r;
+}
 
 include 'includes/header.php';
 ?>
@@ -382,8 +335,8 @@ include 'includes/header.php';
                         $statBadge = $isActive
                             ? '<span class="status-badge active"><span class="status-dot"></span>Active</span>'
                             : '<span class="status-badge inactive"><span class="status-dot"></span>Inactive</span>';
-                        $avatarHtml = !empty($u['profile_image'])
-                            ? '<div class="user-avatar-sm"><img src="' . htmlspecialchars($u['profile_image']) . '" alt=""></div>'
+                        $avatarHtml = !empty($u['profile_image_src'])
+                            ? '<div class="user-avatar-sm"><img src="' . htmlspecialchars($u['profile_image_src']) . '" alt=""></div>'
                             : '<div class="user-avatar-sm"><span class="avatar-initials">' . $initials . '</span></div>';
                     ?>
                         <tr>
@@ -849,8 +802,8 @@ function openEdit(u) {
     document.getElementById('editStat').value = u.stat;
     // Show current profile image if exists
     var preview = document.getElementById('editImgPreview');
-    if (u.profile_image) {
-        preview.innerHTML = '<img src="' + esc(u.profile_image) + '" style="width:100%;height:100%;object-fit:cover;">';
+    if (u.profile_image_src) {
+        preview.innerHTML = '<img src="' + esc(u.profile_image_src) + '" style="width:100%;height:100%;object-fit:cover;">';
     } else {
         preview.innerHTML = '<i class="bi bi-person-fill" style="font-size:2.5rem;color:#09173c;"></i>';
     }
@@ -880,8 +833,8 @@ function viewProfile(id) {
         return years + (years === 1 ? ' year' : ' years');
     };
     const row = (label, content) => `<div class="profile-row"><dt>${esc(label)}</dt><dd>${content}</dd></div>`;
-    const avatar = u.profile_image
-        ? `<img src="${esc(u.profile_image)}" alt="${esc(fullName)} profile photo">`
+    const avatar = u.profile_image_src
+        ? `<img src="${esc(u.profile_image_src)}" alt="${esc(fullName)} profile photo">`
         : `<span>${esc(initials || '?')}</span>`;
     const emailValue = isBlank(u.email)
         ? text('')

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/dbconnect.php';
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 require_once __DIR__ . '/../../config/auth_guard.php';
+require_once __DIR__ . '/../../includes/profileImage.php';
 requireRole([4]);
 requireActiveAccount($conn);
 
@@ -10,11 +11,15 @@ $full     = currentUserName();
 $userType = currentRole();
 
 // Fetch current user info
-$stmt = $conn->prepare("SELECT fname, lname, mname, suffix, phone, email FROM tbl_user WHERE id = ?");
+$stmt = $conn->prepare("SELECT fname, lname, mname, suffix, phone, email, profile_image FROM tbl_user WHERE id = ?");
 $stmt->bind_param('i', $userId);
 $stmt->execute();
 $user = $stmt->get_result()->fetch_assoc();
 $stmt->close();
+
+$profileImageStored = trim((string)($user['profile_image'] ?? ''));
+$profileImageSrc = profileImageWebPath($profileImageStored);
+$profileImageMissing = $profileImageStored !== '' && $profileImageSrc === '' && !profileImageIsRemote($profileImageStored);
 
 include 'includes/header.php';
 ?>
@@ -27,7 +32,13 @@ include 'includes/header.php';
             <div class="account-layout">
                 <aside class="account-sidebar">
                     <section class="account-identity">
-                        <div class="account-avatar"><i class="bi bi-person-badge" aria-hidden="true"></i></div>
+                        <div class="account-avatar<?= $profileImageSrc !== '' ? ' has-image' : '' ?>">
+                            <?php if ($profileImageSrc !== ''): ?>
+                                <img src="<?= htmlspecialchars($profileImageSrc) ?>" alt="Your profile photo">
+                            <?php else: ?>
+                                <i class="bi bi-person-badge" aria-hidden="true"></i>
+                            <?php endif; ?>
+                        </div>
                         <span class="account-eyebrow">Your account</span>
                         <h3><?= htmlspecialchars(trim(implode(' ', array_filter([$user['fname'], $user['mname'], $user['lname'], $user['suffix']])))) ?></h3>
                         <span class="account-role">Committee</span>
@@ -39,7 +50,7 @@ include 'includes/header.php';
                         <div><i class="bi bi-shield-lock" aria-hidden="true"></i><span>To update only your profile, leave both password fields blank.</span></div>
                     </section>
                 </aside>
-                <form id="committeeAccountForm">
+                <form id="committeeAccountForm" enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken()) ?>">
                     <!-- Profile Information Section -->
                     <div class="form-section">
@@ -52,6 +63,29 @@ include 'includes/header.php';
                             </div>
                         </div>
                         <div class="form-section-body">
+                            <div class="acct-photo-field">
+                                <div class="acct-photo-preview<?= $profileImageSrc !== '' ? ' has-image' : '' ?>" id="accountPhotoPreview">
+                                    <?php if ($profileImageSrc !== ''): ?>
+                                        <img src="<?= htmlspecialchars($profileImageSrc) ?>" alt="Current profile photo">
+                                    <?php else: ?>
+                                        <i class="bi bi-person-fill" aria-hidden="true"></i>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="acct-photo-copy">
+                                    <span class="acct-form-label">Profile Photo</span>
+                                    <p class="acct-photo-help<?= $profileImageMissing ? ' is-warning' : '' ?>" id="accountPhotoNote"><?= $profileImageMissing ? 'Your saved photo is no longer available. Upload a new one.' : 'JPG, PNG or GIF. Maximum 2 MB.' ?></p>
+                                    <div class="acct-photo-actions">
+                                        <button type="button" class="acct-photo-btn" id="accountPhotoChoose">
+                                            <i class="bi bi-camera" aria-hidden="true"></i> Change Photo
+                                        </button>
+                                        <button type="button" class="acct-photo-remove<?= $profileImageSrc !== '' ? '' : ' d-none' ?>" id="accountPhotoRemove">
+                                            <i class="bi bi-trash3" aria-hidden="true"></i> Remove
+                                        </button>
+                                    </div>
+                                    <input type="file" name="profile_image" id="account_profile_image" accept="image/jpeg,image/png,image/gif" hidden>
+                                    <input type="hidden" name="remove_profile_image" id="account_remove_profile_image" value="0">
+                                </div>
+                            </div>
                             <div class="row g-3">
                                 <div class="col-md-5">
                                     <label class="acct-form-label" for="account_fname">First Name<sup class="text-danger">*</sup></label>
@@ -164,6 +198,61 @@ include 'includes/header.php';
             })
             .catch(() => Swal.fire({ icon: 'error', title: 'Error', text: 'Something went wrong.' }));
         });
+    </script>
+    <script>
+        (function () {
+            const photoInput = document.getElementById('account_profile_image');
+            const removeInput = document.getElementById('account_remove_profile_image');
+            const preview = document.getElementById('accountPhotoPreview');
+            const chooseButton = document.getElementById('accountPhotoChoose');
+            const removeButton = document.getElementById('accountPhotoRemove');
+            const note = document.getElementById('accountPhotoNote');
+            if (!photoInput || !preview || !chooseButton || !removeButton) return;
+
+            const fallbackIcon = '<i class="bi bi-person-fill" aria-hidden="true"></i>';
+            let objectUrl = '';
+
+            chooseButton.addEventListener('click', function () {
+                photoInput.click();
+            });
+
+            photoInput.addEventListener('change', function () {
+                if (!this.files || !this.files.length) return;
+                const file = this.files[0];
+
+                if (['image/jpeg', 'image/png', 'image/gif'].indexOf(file.type) === -1) {
+                    Swal.fire({ icon: 'error', title: 'Unsupported photo', text: 'Choose a JPG, PNG, or GIF image.' });
+                    this.value = '';
+                    return;
+                }
+                if (file.size > 2 * 1024 * 1024) {
+                    Swal.fire({ icon: 'error', title: 'Photo too large', text: 'Choose an image smaller than 2 MB.' });
+                    this.value = '';
+                    return;
+                }
+
+                if (objectUrl) URL.revokeObjectURL(objectUrl);
+                objectUrl = URL.createObjectURL(file);
+                preview.classList.add('has-image');
+                preview.innerHTML = '<img src="' + objectUrl + '" alt="Selected profile photo">';
+                removeInput.value = '0';
+                removeButton.classList.remove('d-none');
+                note.textContent = file.name;
+            });
+
+            removeButton.addEventListener('click', function () {
+                photoInput.value = '';
+                removeInput.value = '1';
+                if (objectUrl) {
+                    URL.revokeObjectURL(objectUrl);
+                    objectUrl = '';
+                }
+                preview.classList.remove('has-image');
+                preview.innerHTML = fallbackIcon;
+                removeButton.classList.add('d-none');
+                note.textContent = 'Your current photo will be removed when you save.';
+            });
+        })();
     </script>
 </body>
 </html>

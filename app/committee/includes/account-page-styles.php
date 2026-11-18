@@ -8,7 +8,9 @@
 .account-layout { display:grid; grid-template-columns:280px minmax(0,1fr); align-items:start; gap:22px; }
 .account-sidebar { display:grid; gap:18px; }
 .account-identity { padding:24px; background:#edf2fc; border:1px solid #d6dfed; border-top:3px solid #245cbb; border-radius:4px; }
-.account-avatar { width:50px; height:50px; display:grid; place-items:center; border-radius:4px; background:#dce7fc; color:#245cbb; font-size:24px; margin-bottom:18px; }
+.account-avatar { width:50px; height:50px; display:grid; place-items:center; border-radius:4px; background:#dce7fc; color:#245cbb; font-size:24px; margin-bottom:18px; overflow:hidden; }
+.account-avatar.has-image { background:#fff; border:1px solid #d6dfed; }
+.account-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 .account-identity h3 { margin:8px 0 12px; font-size:20px; font-weight:600; color:#172742; overflow-wrap:anywhere; line-height:1.4; }
 .account-role { display:inline-block; padding:5px 8px; border-radius:3px; font-size:11px; color:#245cbb; background:#dce7fc; }
 .account-identity p { font-size:12px; color:#657b9e; overflow-wrap:anywhere; margin:14px 0 0; }
@@ -38,11 +40,25 @@
 .account-save-bar > span { color:#75809a; font-size:11px; }
 .acct-save-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid #245cbb; background:#245cbb; color:#fff; border-radius:4px; padding:10px 18px; font-size:12px; font-weight:600; }
 .acct-save-btn:hover { background:#173f87; border-color:#173f87; }
+.acct-photo-field { display:flex; align-items:center; gap:18px; padding-bottom:22px; margin-bottom:22px; border-bottom:1px solid #e8edf4; }
+.acct-photo-preview { width:76px; height:76px; flex-shrink:0; display:grid; place-items:center; overflow:hidden; border:1px solid #d6dfeb; border-radius:6px; background:#edf2fc; color:#245cbb; font-size:30px; }
+.acct-photo-preview img { width:100%; height:100%; object-fit:cover; display:block; }
+.acct-photo-preview.has-image { background:#fff; }
+.acct-photo-copy { min-width:0; }
+.acct-photo-help { margin:3px 0 10px; font-size:11px; color:#75809a; line-height:1.6; overflow-wrap:anywhere; }
+.acct-photo-help.is-warning { color:#a12c25; font-weight:600; }
+.acct-photo-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.acct-photo-btn,.acct-photo-remove { display:inline-flex; align-items:center; gap:6px; border-radius:4px; padding:7px 12px; font-size:11px; font-weight:600; cursor:pointer; }
+.acct-photo-btn { border:1px solid #245cbb; background:#245cbb; color:#fff; }
+.acct-photo-btn:hover { background:#173f87; border-color:#173f87; }
+.acct-photo-remove { border:1px solid #e1c4c1; background:#fff; color:#a12c25; }
+.acct-photo-remove:hover { background:#fdebea; }
 .committee-account-page button:focus-visible { outline:2px solid #2f6fed; outline-offset:3px; }
 @media(max-width:991px) { .account-layout { grid-template-columns:1fr; } .account-sidebar { grid-template-columns:1fr 1fr; } }
 @media(max-width:600px) {
 .account-page { padding:14px; }
 .account-sidebar { grid-template-columns:1fr; }
+.acct-photo-field { flex-direction:column; align-items:flex-start; }
 .committee-account-page .form-section-header,
 .committee-account-page .form-section-body { padding:18px; }
 .account-save-bar { padding:16px; flex-wrap:wrap; }

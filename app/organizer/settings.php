@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/dbconnect.php';
 require_once __DIR__ . '/../../config/auth_guard.php';
 require_once __DIR__ . '/../../config/passwordSecurity.php';
 require_once __DIR__ . '/../../config/securityLogger.php';
+require_once __DIR__ . '/../../includes/profileImage.php';
 if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $userId   = currentUserId();
 $full     = currentUserName();
@@ -27,14 +28,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = '<div class="alert alert-danger">The form session expired. Refresh the page and try again.</div>';
     } else {
 if (isset($_POST['update_account'])) {
-    $newFname = trim($_POST['fname']);
-    $newLname = trim($_POST['lname']);
-    $newEmail = trim($_POST['email']);
-    $stmt = $conn->prepare("UPDATE tbl_user SET fname=?, lname=?, email=? WHERE id=?");
-    $stmt->bind_param('sssi', $newFname, $newLname, $newEmail, $userId);
-    $stmt->execute(); $stmt->close();
-    SecurityLogger::auth('Profile Updated', "Organizer user ID $userId updated profile information");
-    $msg = '<div class="alert alert-success">Account updated successfully.</div>';
+    $newFname = trim($_POST['fname'] ?? '');
+    $newLname = trim($_POST['lname'] ?? '');
+    $newEmail = trim($_POST['email'] ?? '');
+    $projectRoot = dirname(__DIR__, 2);
+
+    if ($newFname === '' || $newLname === '' || $newEmail === '') {
+        $msg = '<div class="alert alert-danger">Please fill in all required fields.</div>';
+    } else {
+        // Current photo, so a replacement can clean up the previous file afterwards.
+        $currentPhoto = '';
+        $photoStmt = $conn->prepare("SELECT profile_image FROM tbl_user WHERE id=?");
+        $photoStmt->bind_param('i', $userId);
+        $photoStmt->execute();
+        $photoStmt->bind_result($currentPhoto);
+        $photoStmt->fetch();
+        $photoStmt->close();
+        $currentPhoto = (string)($currentPhoto ?? '');
+
+        $removePhoto = (string)($_POST['remove_profile_image'] ?? '') === '1';
+        $uploadsPhoto = isset($_FILES['profile_image']) && is_array($_FILES['profile_image'])
+            && (int)($_FILES['profile_image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+
+        $newPhoto = null;
+        $photoChanged = false;
+
+        if ($uploadsPhoto) {
+            try {
+                $newPhoto = profileImageStoreUpload($_FILES['profile_image'], (int)$userId, $projectRoot);
+                $photoChanged = true;
+            } catch (Throwable $e) {
+                $msg = '<div class="alert alert-danger">' . htmlspecialchars($e->getMessage()) . '</div>';
+            }
+        } elseif ($removePhoto && $currentPhoto !== '') {
+            $photoChanged = true;
+        }
+
+        if ($msg === '') {
+            $finalPhoto = $photoChanged ? $newPhoto : $currentPhoto;
+            $stmt = $conn->prepare("UPDATE tbl_user SET fname=?, lname=?, email=?, profile_image=? WHERE id=?");
+            $stmt->bind_param('ssssi', $newFname, $newLname, $newEmail, $finalPhoto, $userId);
+            if ($stmt->execute()) {
+                // Remove the replaced/removed photo once the database is updated.
+                if ($photoChanged && $currentPhoto !== '' && $currentPhoto !== (string)$finalPhoto) {
+                    profileImageDeleteStored($currentPhoto, $projectRoot);
+                }
+                SecurityLogger::auth('Profile Updated', "Organizer user ID $userId updated profile information");
+                $msg = '<div class="alert alert-success">Account updated successfully.</div>';
+            } else {
+                // The database rejected the save: drop the new file so it does not orphan.
+                if ($photoChanged && $newPhoto !== null) {
+                    profileImageDeleteStored($newPhoto, $projectRoot);
+                }
+                $msg = '<div class="alert alert-danger">Unable to update your account. Please try again.</div>';
+            }
+            $stmt->close();
+        } elseif ($photoChanged && $newPhoto !== null) {
+            // A validation error surfaced after the upload: drop the new file.
+            profileImageDeleteStored($newPhoto, $projectRoot);
+        }
+    }
 }
 if (isset($_POST['change_password'])) {
     $current = $_POST['current_password'];
@@ -67,9 +120,12 @@ if (isset($_POST['change_password'])) {
 }
 
 // Fetch current user info
-$stmt = $conn->prepare("SELECT fname, lname, email FROM tbl_user WHERE id=?");
+$stmt = $conn->prepare("SELECT fname, lname, email, profile_image FROM tbl_user WHERE id=?");
 $stmt->bind_param('i', $userId); $stmt->execute();
-$stmt->bind_result($dbFname, $dbLname, $dbEmail); $stmt->fetch(); $stmt->close();
+$stmt->bind_result($dbFname, $dbLname, $dbEmail, $dbProfileImage); $stmt->fetch(); $stmt->close();
+$profileImageStored = trim((string)($dbProfileImage ?? ''));
+$profileImageSrc = profileImageWebPath($profileImageStored);
+$profileImageMissing = $profileImageStored !== '' && $profileImageSrc === '' && !profileImageIsRemote($profileImageStored);
 ?>
 <?php include 'includes/header.php'; ?>
 
@@ -118,8 +174,31 @@ $stmt->bind_result($dbFname, $dbLname, $dbEmail); $stmt->fetch(); $stmt->close()
                                 </div>
                             </div>
                             <div class="settings-card-body">
-                                <form method="POST">
+                                <form method="POST" enctype="multipart/form-data">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['organizer_settings_csrf_token']) ?>">
+                                    <div class="settings-photo-field">
+                                        <div class="settings-photo-preview<?= $profileImageSrc !== '' ? ' has-image' : '' ?>" id="organizerPhotoPreview">
+                                            <?php if ($profileImageSrc !== ''): ?>
+                                                <img src="<?= htmlspecialchars($profileImageSrc) ?>" alt="Current profile photo">
+                                            <?php else: ?>
+                                                <i class="bi bi-person-fill" aria-hidden="true"></i>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="settings-photo-copy">
+                                            <span class="settings-field-label">Profile Photo</span>
+                                            <p class="settings-photo-help<?= $profileImageMissing ? ' is-warning' : '' ?>" id="organizerPhotoNote"><?= $profileImageMissing ? 'Your saved photo is no longer available. Upload a new one.' : 'JPG, PNG or GIF. Maximum 2 MB.' ?></p>
+                                            <div class="settings-photo-actions">
+                                                <button type="button" class="settings-photo-btn" id="organizerPhotoChoose">
+                                                    <i class="bi bi-camera" aria-hidden="true"></i> Change Photo
+                                                </button>
+                                                <button type="button" class="settings-photo-remove<?= $profileImageSrc !== '' ? '' : ' d-none' ?>" id="organizerPhotoRemove">
+                                                    <i class="bi bi-trash3" aria-hidden="true"></i> Remove
+                                                </button>
+                                            </div>
+                                            <input type="file" name="profile_image" id="organizer_profile_image" accept="image/jpeg,image/png,image/gif" hidden>
+                                            <input type="hidden" name="remove_profile_image" id="organizer_remove_profile_image" value="0">
+                                        </div>
+                                    </div>
                                     <div class="mb-3">
                                         <label class="settings-field-label" for="account-fname">First Name</label>
                                         <input type="text" name="fname" id="account-fname" autocomplete="given-name" class="settings-field-input" value="<?= htmlspecialchars((string)$dbFname) ?>" required>
@@ -480,5 +559,60 @@ $stmt->bind_result($dbFname, $dbLname, $dbEmail); $stmt->fetch(); $stmt->close()
 </div>
 <!-- /.container-fluid -->
 
+<script>
+    (function () {
+        const photoInput = document.getElementById('organizer_profile_image');
+        const removeInput = document.getElementById('organizer_remove_profile_image');
+        const preview = document.getElementById('organizerPhotoPreview');
+        const chooseButton = document.getElementById('organizerPhotoChoose');
+        const removeButton = document.getElementById('organizerPhotoRemove');
+        const note = document.getElementById('organizerPhotoNote');
+        if (!photoInput || !preview || !chooseButton || !removeButton) return;
+
+        const fallbackIcon = '<i class="bi bi-person-fill" aria-hidden="true"></i>';
+        let objectUrl = '';
+
+        chooseButton.addEventListener('click', function () {
+            photoInput.click();
+        });
+
+        photoInput.addEventListener('change', function () {
+            if (!this.files || !this.files.length) return;
+            const file = this.files[0];
+
+            if (['image/jpeg', 'image/png', 'image/gif'].indexOf(file.type) === -1) {
+                Swal.fire({ icon: 'error', title: 'Unsupported photo', text: 'Choose a JPG, PNG, or GIF image.' });
+                this.value = '';
+                return;
+            }
+            if (file.size > 2 * 1024 * 1024) {
+                Swal.fire({ icon: 'error', title: 'Photo too large', text: 'Choose an image smaller than 2 MB.' });
+                this.value = '';
+                return;
+            }
+
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = URL.createObjectURL(file);
+            preview.classList.add('has-image');
+            preview.innerHTML = '<img src="' + objectUrl + '" alt="Selected profile photo">';
+            removeInput.value = '0';
+            removeButton.classList.remove('d-none');
+            note.textContent = file.name;
+        });
+
+        removeButton.addEventListener('click', function () {
+            photoInput.value = '';
+            removeInput.value = '1';
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+                objectUrl = '';
+            }
+            preview.classList.remove('has-image');
+            preview.innerHTML = fallbackIcon;
+            removeButton.classList.add('d-none');
+            note.textContent = 'Your current photo will be removed when you save.';
+        });
+    })();
+</script>
 </body>
 <?php include 'includes/footer.php'; ?>

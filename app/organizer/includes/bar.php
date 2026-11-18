@@ -1,9 +1,11 @@
 <?php
+require_once __DIR__ . '/../../../includes/profileImage.php';
 // Ensure variables expected by this include are defined to avoid notices
 $full = ($full ?? '') ?: ($_SESSION['lms_username'] ?? '');
 $organizerRoleLabel = 'Organizer';
 $conn = $conn ?? null;
 $_bar_unread = 0;
+$_bar_avatar_src = '';
 if (!empty($userId) && !empty($conn)) {
     $_bar_stmt = $conn->prepare("SELECT COUNT(*) FROM tbl_notification WHERE user_id = ? AND is_read = 0");
     if ($_bar_stmt) {
@@ -12,6 +14,16 @@ if (!empty($userId) && !empty($conn)) {
         $_bar_stmt->bind_result($_bar_unread);
         $_bar_stmt->fetch();
         $_bar_stmt->close();
+    }
+
+    $_bar_avatar_stmt = $conn->prepare("SELECT profile_image FROM tbl_user WHERE id = ?");
+    if ($_bar_avatar_stmt) {
+        $_bar_avatar_stmt->bind_param('i', $userId);
+        $_bar_avatar_stmt->execute();
+        $_bar_avatar_stmt->bind_result($_bar_avatar_raw);
+        $_bar_avatar_stmt->fetch();
+        $_bar_avatar_stmt->close();
+        $_bar_avatar_src = profileImageWebPath($_bar_avatar_raw ?? '');
     }
 }
 ?>
@@ -76,6 +88,7 @@ if (!empty($userId) && !empty($conn)) {
     .role-notification-link { position:relative; display:inline-flex !important; align-items:center; justify-content:center; width:46px; height:46px; padding:0 !important; margin-right:8px; border-radius:50%; line-height:1; cursor:pointer; z-index:1; }
     .role-notification-link:hover { background:rgba(255,255,255,.1); }
     .role-notification-link .bi-bell-fill { display:block; font-size:24px; line-height:1; }
+    .topbar-avatar-img { width:32px; height:32px; flex-shrink:0; border-radius:50%; object-fit:cover; display:block; border:2px solid rgba(255,255,255,.3); }
     .role-notification-badge { position:absolute; top:2px; right:0; display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 5px; border:2px solid #09173c; border-radius:4px; background:#dc3545; color:#fff; font-size:10px; font-weight:700; line-height:1; pointer-events:none; z-index:2; }
     /* Submenu */
     .settings-submenu { display:none; padding-left:1.5rem; }
@@ -270,7 +283,11 @@ if (!empty($userId) && !empty($conn)) {
                     </li>
                     <li class="nav-item dropdown topbar-account">
                         <button class="nav-link topbar-account-toggle organizer-account" type="button" id="organizerAccountMenuToggle" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Open account menu">
-                            <i class="bi bi-person-circle" style="font-size:32px;color:white;" aria-hidden="true"></i>
+                            <?php if ($_bar_avatar_src !== ''): ?>
+                                <img class="topbar-avatar-img" src="<?= htmlspecialchars($_bar_avatar_src) ?>" alt="" aria-hidden="true">
+                            <?php else: ?>
+                                <i class="bi bi-person-circle" style="font-size:32px;color:white;" aria-hidden="true"></i>
+                            <?php endif; ?>
                             <span class="organizer-account-label ms-2 text-capitalize" style="color:white;font-size:13px;">
                                 <b><?php echo htmlspecialchars($full, ENT_QUOTES, 'UTF-8'); ?></b><br>
                                 <span class="user-role-text"><?php echo $organizerRoleLabel; ?></span>
