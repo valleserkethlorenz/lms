@@ -94,7 +94,11 @@ include 'includes/header.php';
                             </div>
 
                             <div class="col-12 report-submit-row">
-                                <span class="report-form-note">Choose a report type and narrow the scope as needed.</span><button type="submit" class="report-generate-btn" id="generateReport"><i class="bi bi-file-earmark-bar-graph"></i> Generate Report</button>
+                                <span class="report-form-note">Choose a report type and narrow the scope as needed.</span>
+                                <div class="report-submit-actions">
+                                    <button type="button" class="report-reset-btn" id="resetReport"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+                                    <button type="submit" class="report-generate-btn" id="generateReport"><i class="bi bi-file-earmark-bar-graph"></i> Generate Report</button>
+                                </div>
                             </div>
                         </form>
                         </div>
@@ -114,6 +118,7 @@ include 'includes/header.php';
                                 <button type="button" id="printReport" class="report-action-btn report-action-btn-print" disabled><i class="bi bi-printer"></i> Print</button>
                             </div>
                         </div>
+                        <div class="report-notice" id="reportNotice" role="status" aria-live="polite" hidden></div>
                         <div class="report-meta">
                             <span class="report-meta-item"><i class="bi bi-funnel"></i> <span id="reportFilters">No filters applied</span></span>
                             <span class="report-meta-item"><i class="bi bi-clock"></i> <span id="reportGenerated">Not yet generated</span></span>
@@ -144,78 +149,294 @@ include 'includes/header.php';
     </style>
 
     <script>
+    (() => {
+        'use strict';
+        const form = document.getElementById('reportForm');
+        const reportLeague = document.getElementById('reportLeague');
+        const reportType = document.getElementById('reportType');
+        const multiLeagueFilters = [...document.querySelectorAll('.multi-league-filter')];
+        const reportDateFilters = [...document.querySelectorAll('.report-date-filter')];
+        const reportFromLabel = document.getElementById('reportFromLabel');
+        const reportToLabel = document.getElementById('reportToLabel');
+        const table = document.getElementById('reportTable');
+        const titleEl = document.getElementById('reportTitle');
+        const filtersEl = document.getElementById('reportFilters');
+        const generatedEl = document.getElementById('reportGenerated');
+        const summaryEl = document.getElementById('reportSummary');
+        const noticeEl = document.getElementById('reportNotice');
+        const generateBtn = document.getElementById('generateReport');
+        const resetBtn = document.getElementById('resetReport');
+        const actionButtons = ['exportCsv', 'exportExcel', 'exportPdf', 'printReport']
+            .map(id => document.getElementById(id));
+        const dateFilterLabels = {
+            registrations: ['Submitted From', 'Submitted To'],
+            approved_teams: ['Approved From', 'Approved To'],
+            rosters: ['Added From', 'Added To'],
+            schedules: ['Match Date From', 'Match Date To'],
+            results: ['Played From', 'Played To'],
+            summary: ['Start Date From', 'Start Date To']
+        };
         let reportRows = [];
-        let reportMeta = {title:'League Report',filters:{},generated_at:''};
-        const reportLeague=document.getElementById('reportLeague');
-        const multiLeagueFilters=[...document.querySelectorAll('.multi-league-filter')];
-        function updateReportFilterVisibility(){
-            const useSpecificLeague=reportLeague.value!=='';
-            multiLeagueFilters.forEach(wrapper=>{
-                wrapper.classList.toggle('d-none',useSpecificLeague);
-                const control=wrapper.querySelector('select,input');
-                if(useSpecificLeague&&control) control.value='';
-            });
+        let reportMeta = {title: 'League Report', filters: {}, generated_at: ''};
+        let lastRequest = '';
+        let stale = false;
+        let generating = false;
+
+        function escapeReport(value) {
+            const div = document.createElement('div');
+            div.textContent = value ?? '';
+            return div.innerHTML;
         }
-        reportLeague.addEventListener('change',updateReportFilterVisibility);
-        updateReportFilterVisibility();
-        const reportType=document.getElementById('reportType');
-        const reportDateFilters=[...document.querySelectorAll('.report-date-filter')];const reportFromLabel=document.getElementById('reportFromLabel');const reportToLabel=document.getElementById('reportToLabel');const dateFilterLabels={registrations:['Submitted From','Submitted To'],approved_teams:['Approved From','Approved To'],rosters:['Added From','Added To'],schedules:['Match Date From','Match Date To'],results:['Played From','Played To'],summary:['Start Date From','Start Date To']};
-        function updateDateFilterVisibility(){
-            const supportsDateFilter=!['standings','participation'].includes(reportType.value);const dateLabels=dateFilterLabels[reportType.value]||['From','To'];if(reportFromLabel)reportFromLabel.textContent=dateLabels[0];if(reportToLabel)reportToLabel.textContent=dateLabels[1];
-            reportDateFilters.forEach(wrapper=>{
-                wrapper.classList.toggle('d-none',!supportsDateFilter);
-                const input=wrapper.querySelector('input');
-                if(!supportsDateFilter&&input) input.value='';
-            });
+        function isNumericValue(value) {
+            return typeof value === 'number'
+                || (typeof value === 'string' && /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value.trim()));
         }
-        reportType.addEventListener('change',updateDateFilterVisibility);
-        updateDateFilterVisibility();
-        document.getElementById('reportForm').addEventListener('submit', async function(e){
-            e.preventDefault();
-            const formData=new FormData(this), from=formData.get('from_date'), to=formData.get('to_date');
-            if(from&&to&&from>to) return Swal.fire('Invalid dates','From date cannot be later than To date.','warning');
-            const button=document.getElementById('generateReport');button.disabled=true;button.innerHTML='<span class="spinner-border spinner-border-sm me-1"></span>Generating';
-            try {
-            const response = await fetch('action/reportAction.php?' + new URLSearchParams(formData),{headers:{'Accept':'application/json'}});
-            const data = await response.json();
-            if (!response.ok || data.status !== 200) throw new Error(data.msg || 'Unable to generate report.');
-            reportRows = Array.isArray(data.rows)?data.rows:[]; reportMeta=data;
-            document.getElementById('reportTitle').textContent=data.title||'League Report';
-            document.getElementById('reportFilters').textContent=Object.entries(data.filters||{}).map(([key,value])=>`${key}: ${value}`).join(' • ');
-            document.getElementById('reportGenerated').textContent=`Generated: ${data.generated_at||''}`;
-            const table = document.getElementById('reportTable');
-            if (!reportRows.length) {
-                table.innerHTML=''; document.getElementById('reportSummary').textContent='No matching records found.';
-            } else {
-                const headers=Object.keys(reportRows[0]);
-                table.innerHTML='<thead><tr>'+headers.map(h=>`<th>${h.replaceAll('_',' ')}</th>`).join('')+'</tr></thead><tbody>'+reportRows.map(r=>'<tr>'+headers.map(h=>`<td>${escapeReport(r[h])}</td>`).join('')+'</tr>').join('')+'</tbody>';
-                document.getElementById('reportSummary').textContent=`${reportRows.length} record(s) generated.`;
+        function setNotice(message, kind = 'info') {
+            if (!message) {
+                noticeEl.hidden = true;
+                noticeEl.textContent = '';
+                noticeEl.className = 'report-notice';
+                return;
             }
-            document.getElementById('exportCsv').disabled=!reportRows.length;
-            document.getElementById('exportExcel').disabled=!reportRows.length;
-            document.getElementById('exportPdf').disabled=!reportRows.length;
-            document.getElementById('printReport').disabled=!reportRows.length;
-            } catch(error) { reportRows=[];document.getElementById('exportCsv').disabled=true;document.getElementById('exportExcel').disabled=true;document.getElementById('exportPdf').disabled=true;document.getElementById('printReport').disabled=true;Swal.fire('Report error',error.message,'error'); }
-            finally { button.disabled=false;button.innerHTML='<i class="bi bi-file-earmark-bar-graph"></i> Generate Report'; }
+            noticeEl.hidden = false;
+            noticeEl.className = 'report-notice report-notice-' + kind;
+            noticeEl.textContent = message;
+        }
+        function updateActionButtons() {
+            const enabled = reportRows.length > 0 && !stale && !generating;
+            actionButtons.forEach(button => {
+                if (button) button.disabled = !enabled;
+            });
+        }
+        function markStale() {
+            if (!lastRequest || stale) return;
+            stale = true;
+            setNotice('Filters changed — generate the report again to refresh the table and enable exports.', 'warning');
+            updateActionButtons();
+        }
+        function updateReportFilterVisibility() {
+            const useSpecificLeague = reportLeague.value !== '';
+            multiLeagueFilters.forEach(wrapper => {
+                wrapper.classList.toggle('d-none', useSpecificLeague);
+                const control = wrapper.querySelector('select,input');
+                if (useSpecificLeague && control) control.value = '';
+            });
+        }
+        function updateDateFilterVisibility() {
+            const supportsDateFilter = !['standings', 'participation'].includes(reportType.value);
+            const dateLabels = dateFilterLabels[reportType.value] || ['From', 'To'];
+            if (reportFromLabel) reportFromLabel.textContent = dateLabels[0];
+            if (reportToLabel) reportToLabel.textContent = dateLabels[1];
+            reportDateFilters.forEach(wrapper => {
+                wrapper.classList.toggle('d-none', !supportsDateFilter);
+                if (!supportsDateFilter) {
+                    const input = wrapper.querySelector('input');
+                    if (input) input.value = '';
+                }
+            });
+        }
+        reportLeague.addEventListener('change', () => { updateReportFilterVisibility(); markStale(); });
+        reportType.addEventListener('change', () => { updateDateFilterVisibility(); markStale(); });
+        form.addEventListener('change', markStale);
+        form.addEventListener('input', event => {
+            if (event.target && event.target.type === 'date') markStale();
         });
-        function escapeReport(value){ const d=document.createElement('div'); d.textContent=value ?? ''; return d.innerHTML; }
-        document.getElementById('exportCsv').addEventListener('click', function(){
-            if(!reportRows.length) return; const headers=Object.keys(reportRows[0]);
-            const quote=v=>'"'+String(v ?? '').replaceAll('"','""')+'"';
-            const csv=[headers.map(h=>quote(h.replaceAll('_',' '))).join(','),...reportRows.map(r=>headers.map(h=>quote(r[h])).join(','))].join('\r\n');
-            const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})); a.download=(reportMeta.title||'league-report').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),0);
+        updateReportFilterVisibility();
+        updateDateFilterVisibility();
+        function buildParams() {
+            const params = new URLSearchParams(new FormData(form));
+            [...params.keys()].forEach(key => {
+                if (params.get(key) === '') params.delete(key);
+            });
+            return params;
+        }
+        function parseJsonResponse(text) {
+            try {
+                return JSON.parse(text);
+            } catch (error) {
+                throw new Error('The server returned an unexpected response. Your session may have expired — refresh and sign in again.');
+            }
+        }
+        function renderEmpty(message) {
+            reportRows = [];
+            table.innerHTML = '<tbody><tr><td class="report-empty" colspan="20">'
+                + '<i class="bi bi-inbox"></i><span>' + escapeReport(message) + '</span></td></tr></tbody>';
+        }
+        function renderTable() {
+            if (!reportRows.length) {
+                renderEmpty('No matching records found for the selected filters.');
+                return;
+            }
+            const headers = Object.keys(reportRows[0]);
+            const numeric = headers.map(header => reportRows.slice(0, 50).every(row => isNumericValue(row[header])));
+            const head = '<thead><tr>' + headers.map(header =>
+                '<th scope="col">' + escapeReport(header.replaceAll('_', ' ')) + '</th>'
+            ).join('') + '</tr></thead>';
+            const body = reportRows.map(row => '<tr>' + headers.map((header, index) =>
+                '<td' + (numeric[index] ? ' class="report-number"' : '') + '>' + escapeReport(row[header]) + '</td>'
+            ).join('') + '</tr>').join('');
+            table.innerHTML = '<caption class="visually-hidden">' + escapeReport(reportMeta.title || 'League Report')
+                + '</caption>' + head + '<tbody>' + body + '</tbody>';
+        }
+        async function generateReport(event) {
+            event.preventDefault();
+            if (generating) return;
+
+            const params = buildParams();
+            const from = params.get('from_date') || '';
+            const to = params.get('to_date') || '';
+            if (from && to && from > to) {
+                Swal.fire('Invalid dates', 'From date cannot be later than To date.', 'warning');
+                return;
+            }
+
+            generating = true;
+            stale = false;
+            updateActionButtons();
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating';
+            const resultsSection = document.querySelector('.report-results-section');
+            if (resultsSection) resultsSection.setAttribute('aria-busy', 'true');
+
+            try {
+                const response = await fetch('action/reportAction.php?' + params.toString(), {
+                    headers: {'Accept': 'application/json'},
+                    credentials: 'same-origin'
+                });
+                const data = parseJsonResponse(await response.text());
+                if (!response.ok || data.status !== 200) {
+                    throw new Error(data.msg || 'Unable to generate report.');
+                }
+
+                reportRows = Array.isArray(data.rows) ? data.rows : [];
+                reportMeta = data;
+                lastRequest = params.toString();
+                stale = false;
+
+                titleEl.textContent = data.title || 'League Report';
+                filtersEl.textContent = Object.entries(data.filters || {})
+                    .map(([key, value]) => key + ': ' + value).join(' • ') || 'No filters applied';
+                generatedEl.textContent = 'Generated: ' + (data.generated_at || '');
+                renderTable();
+                summaryEl.textContent = reportRows.length
+                    ? reportRows.length.toLocaleString() + ' record(s) generated.'
+                    : 'No matching records found.';
+
+                if (data.truncated) {
+                    setNotice('Showing the first ' + reportRows.length.toLocaleString()
+                        + ' rows. Use Excel, CSV or PDF to download the complete report.', 'warning');
+                } else {
+                    setNotice('');
+                }
+            } catch (error) {
+                reportRows = [];
+                lastRequest = '';
+                stale = false;
+                titleEl.textContent = 'Report output';
+                filtersEl.textContent = 'No filters applied';
+                generatedEl.textContent = 'Not yet generated';
+                renderEmpty('The report could not be generated.');
+                summaryEl.textContent = 'The report could not be generated.';
+                setNotice('');
+                Swal.fire('Report error', error.message || 'Unable to generate report.', 'error');
+            } finally {
+                generating = false;
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<i class="bi bi-file-earmark-bar-graph"></i> Generate Report';
+                if (resultsSection) resultsSection.removeAttribute('aria-busy');
+                updateActionButtons();
+            }
+        }
+        async function downloadReport(url, fallbackName) {
+            const response = await fetch(url, {
+                headers: {'Accept': 'application/json'},
+                credentials: 'same-origin'
+            });
+            const contentType = response.headers.get('content-type') || '';
+            if (!response.ok) {
+                let message = 'Unable to download the report.';
+                if (contentType.includes('application/json')) {
+                    try {
+                        const data = await response.json();
+                        message = data.msg || message;
+                    } catch (ignored) { /* keep the default message */ }
+                }
+                throw new Error(message);
+            }
+            if (contentType.includes('application/json')) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.msg || 'Unable to download the report.');
+            }
+            if (!/(spreadsheetml|application\/pdf|text\/csv|octet-stream)/i.test(contentType)) {
+                throw new Error('The server returned an unexpected response. Please try again.');
+            }
+
+            const blob = await response.blob();
+            const disposition = response.headers.get('content-disposition') || '';
+            const match = /filename="?([^";]+)"?/i.exec(disposition);
+            const filename = match ? match[1] : fallbackName;
+            const anchor = document.createElement('a');
+            const href = URL.createObjectURL(blob);
+            anchor.href = href;
+            anchor.download = filename;
+            anchor.rel = 'noopener';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(() => URL.revokeObjectURL(href), 1500);
+        }
+        async function handleDownload(url, fallbackName) {
+            if (!lastRequest || stale || generating) return;
+            generating = true;
+            updateActionButtons();
+            try {
+                await downloadReport(url, fallbackName);
+            } catch (error) {
+                Swal.fire('Export error', error.message || 'Unable to download the report.', 'error');
+            } finally {
+                generating = false;
+                updateActionButtons();
+            }
+        }
+        form.addEventListener('submit', generateReport);
+        document.getElementById('exportCsv').addEventListener('click', () => {
+            if (lastRequest) handleDownload('action/exportCsv.php?' + lastRequest, 'league-report.csv');
         });
-        document.getElementById('exportExcel').addEventListener('click', function(){
-            const form=document.getElementById('reportForm');
-            const params=new URLSearchParams(new FormData(form));
-            window.location.href='action/exportExcel.php?'+params.toString();
+        document.getElementById('exportExcel').addEventListener('click', () => {
+            if (lastRequest) handleDownload('action/exportExcel.php?' + lastRequest, 'league-report.xlsx');
         });
-        document.getElementById('exportPdf').addEventListener('click', function(){
-            const form=document.getElementById('reportForm');
-            const params=new URLSearchParams(new FormData(form));
-            window.location.href='action/exportPdf.php?'+params.toString();
+        document.getElementById('exportPdf').addEventListener('click', () => {
+            if (lastRequest) handleDownload('action/exportPdf.php?' + lastRequest, 'league-report.pdf');
         });
-        document.getElementById('printReport').addEventListener('click', function(){const form=document.getElementById('reportForm');const params=new URLSearchParams(new FormData(form));params.set('auto','1');window.open('printReport.php?'+params.toString(),'_blank');});
+        document.getElementById('printReport').addEventListener('click', () => {
+            if (!lastRequest || stale || generating) return;
+            const printWindow = window.open('printReport.php?' + lastRequest + '&auto=1', '_blank');
+            if (printWindow) {
+                printWindow.opener = null;
+            } else {
+                Swal.fire('Popup blocked', 'Allow popups for this site to open the printable report.', 'warning');
+            }
+        });
+        resetBtn.addEventListener('click', () => {
+            if (generating) return;
+            form.reset();
+            reportRows = [];
+            reportMeta = {title: 'League Report', filters: {}, generated_at: ''};
+            lastRequest = '';
+            stale = false;
+            titleEl.textContent = 'Report output';
+            filtersEl.textContent = 'No filters applied';
+            generatedEl.textContent = 'Not yet generated';
+            summaryEl.textContent = 'Choose filters above and click "Generate Report".';
+            setNotice('');
+            renderEmpty('Choose filters above and click "Generate Report".');
+            updateReportFilterVisibility();
+            updateDateFilterVisibility();
+            updateActionButtons();
+        });
+        renderEmpty('Choose filters above and click "Generate Report".');
+        updateActionButtons();
+    })();
     </script>
 
 </body>

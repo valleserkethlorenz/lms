@@ -2,6 +2,7 @@
 -- LMS  -  Step 01: canonical database schema (structure only, no data)
 --
 -- Generated with mysqldump from the verified database on 2026-10-22.
+-- 2026-11-19: migration 043 reporting indexes folded in.
 -- 31 tables. Import AFTER 00_create_database.sql:
 --
 --     mysql -u root lms < 01_schema.sql        (Windows: C:\xampp\mysql\bin\mysql.exe)
@@ -163,7 +164,8 @@ CREATE TABLE `tbl_league` (
   `tournament_completed_at` datetime DEFAULT NULL,
   `tournament_completed_by` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uidx_organizer_active_league` (`created_by`,`league_name`,`sport`,`start_date`,`end_date`,`active_unique`) USING HASH
+  UNIQUE KEY `uidx_organizer_active_league` (`created_by`,`league_name`,`sport`,`start_date`,`end_date`,`active_unique`) USING HASH,
+  KEY `idx_league_report_owner` (`created_by`,`is_archived`,`sport`,`division`,`category`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -438,7 +440,8 @@ CREATE TABLE `tbl_player` (
   `created` datetime NOT NULL DEFAULT current_timestamp(),
   `barangay` varchar(120) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_player_team_eligibility` (`team_id`,`eligibility_status`)
+  KEY `idx_player_team_eligibility` (`team_id`,`eligibility_status`),
+  KEY `idx_player_team_created` (`team_id`,`created`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -537,6 +540,7 @@ CREATE TABLE `tbl_schedule` (
   KEY `idx_venue_date` (`venue`,`date`,`time`),
   KEY `idx_status` (`status`),
   KEY `idx_conflict` (`conflict_detected`),
+  KEY `idx_sched_report_status` (`league_id`,`status`,`published_at`,`is_archived`),
   KEY `fk_schedule_group` (`league_group_id`),
   CONSTRAINT `fk_schedule_group` FOREIGN KEY (`league_group_id`) REFERENCES `tbl_league_group` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -632,7 +636,9 @@ CREATE TABLE `tbl_team` (
   `barangay` varchar(120) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_team_active_registration` (`league_id`,`user_id`,`active_registration`),
-  KEY `idx_team_correction_due` (`status`,`correction_due_at`)
+  KEY `idx_team_correction_due` (`status`,`correction_due_at`),
+  KEY `idx_team_league_status` (`league_id`,`status`),
+  KEY `idx_team_created` (`created`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

@@ -4,33 +4,49 @@ require_once __DIR__ . '/../../../config/dbconnect.php';
 require_once __DIR__ . '/../../../config/auth_guard.php';
 require_once __DIR__ . '/../../../config/reportQuery.php';
 require_once __DIR__ . '/../../../config/apiSecurity.php';
+require_once __DIR__ . '/../../../includes/reportExport.php';
 requireJsonRole([1]);
 requireActiveAccount($conn, true);
 enforceRequestSizeLimit(1 * 1024 * 1024); // 1MB
 addApiSecurityHeaders();
 header('Content-Type: application/json');
 
-$userId=currentUserId();
-$type=trim($_GET['report_type']??'registrations');
-$leagueId=(int)($_GET['league_id']??0);
-$sport=trim($_GET['sport']??'');
-$division=trim($_GET['division']??'');
-$category=trim($_GET['category']??'');
-$leagueStatus=trim($_GET['league_status']??'');
-$from=trim($_GET['from_date']??'');
-$to=trim($_GET['to_date']??'');
+$userId = currentUserId();
 
 try {
-    $report = buildReportQuery($conn, $userId, $type, $leagueId, $sport, $division, $category, $leagueStatus, $from, $to);
-} catch (\InvalidArgumentException $e) {
-    http_response_code(400);
-    echo json_encode(['status' => 400, 'msg' => $e->getMessage()]);
-    exit;
-} catch (\RuntimeException $e) {
-    http_response_code(403);
-    echo json_encode(['status' => 403, 'msg' => $e->getMessage()]);
-    exit;
+    $filters = reportFiltersFromRequest($_GET);
+    $report  = buildReportQuery($conn, $userId, $filters, ['row_limit' => 5000]);
+} catch (Throwable $e) {
+    reportSendErrorResponse($e, true, 'reports.php');
 }
 
-auditLog($conn,'Generate League Report','Generated '.$report['title'].($leagueId?" for league ID $leagueId":' for all owned leagues'));
-echo json_encode(['status'=>200,'title'=>$report['title'],'filters'=>$report['filters'],'generated_at'=>$report['generated_at'],'rows'=>$report['rows']]);
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
+$filterSummary = [];
+foreach ($report['filters'] as $label => $value) {
+    $filterSummary[] = $label . ': ' . $value;
+}
+reportAuditSafely(
+    $conn,
+    'Generate League Report',
+    'Generated ' . $report['title'] . ' (' . $report['row_count'] . ' rows'
+        . ($report['truncated'] ? ', truncated' : '') . ')'
+        . ($filterSummary ? ' — ' . implode(' | ', $filterSummary) : '')
+);
+
+try {
+    echo json_encode([
+        'status'       => 200,
+        'title'        => $report['title'],
+        'type'         => $report['type'],
+        'filters'      => $report['filters'],
+        'generated_at' => $report['generated_at'],
+        'row_count'    => $report['row_count'],
+        'truncated'    => $report['truncated'],
+        'rows'         => $report['rows'],
+    ], JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+} catch (JsonException $e) {
+    reportSendErrorResponse(new ReportExecutionException('Unable to encode the selected report.'), true, 'reports.php');
+}

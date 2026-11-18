@@ -77,11 +77,12 @@ already been applied, compare your schema against the dates below.
 | 040 | `040_schedule_draft_nulls.sql` | 2026-11-06 | yes | nullable `tbl_schedule.date` / `time` for unscheduled drafts |
 | 041 | `041_tournament_structures.sql` | 2026-11-16 | yes | tournament stage/group structures |
 | 042 | `042_email_verification.sql` | 2026-11-16 | yes | `tbl_email_verification` (registration OTP) |
+| 043 | `043_report_indexes.sql` | 2026-11-19 | yes | reporting indexes on leagues, teams, schedules and players |
 
 ## Baseline note
 
 Every migration above is already folded into `install/01_schema.sql`
-(2026-11-16). A database built from `install/` is at migration **042** — do not
+(2026-11-19). A database built from `install/` is at migration **043** — do not
 run this folder against it.
 
 ## Related documents

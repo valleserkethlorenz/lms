@@ -58,7 +58,7 @@ function reportDocumentStyles(string $accent = '#09173c'): string
         . '.data{width:100%;border-collapse:collapse}'
         . '.data thead{display:table-header-group}'
         . '.data th{background:' . $accent . ';color:#fff;font-size:9px;text-transform:uppercase;text-align:left;padding:6px 5px;border:1px solid ' . $accent . '}'
-        . '.data td{font-size:9px;padding:5px;border:1px solid #d1d5db;vertical-align:top}'
+        . '.data td{font-size:9px;padding:5px;border:1px solid #d1d5db;vertical-align:top;word-wrap:break-word}'
         . '.data tbody tr:nth-child(even){background:#f3f4f6}'
         . '.data tr{page-break-inside:avoid}'
         . '.no-records{text-align:center;font-style:italic;color:#6b7280;padding:14px}'

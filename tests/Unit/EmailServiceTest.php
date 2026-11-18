@@ -12,13 +12,13 @@ class EmailServiceTest extends TestCase
 
     public function testSendLmsEmailReturnsArrayStructure(): void
     {
-        // Without SMTP configured, it should attempt mail() and return the expected structure
+        // The service may use Resend, SMTP or mail() depending on configuration.
         $result = sendLmsEmail('test@example.com', 'Test Subject', 'Test body', 'Test User');
         $this->assertIsArray($result);
         $this->assertArrayHasKey('success', $result);
         $this->assertArrayHasKey('method', $result);
         $this->assertArrayHasKey('error', $result);
-        $this->assertContains($result['method'], ['smtp', 'mail']);
+        $this->assertContains($result['method'], ['resend', 'smtp', 'mail']);
     }
 
     public function testSendLmsEmailReturnsBoolSuccess(): void

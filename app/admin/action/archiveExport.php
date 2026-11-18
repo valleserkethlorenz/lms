@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../../../config/dbconnect.php';
 require_once __DIR__ . '/../../../config/auth_guard.php';
+require_once __DIR__ . '/../../../includes/reportExport.php';
 requireRole([3]);
 requireActiveAccount($conn);
 
@@ -47,27 +48,27 @@ if ($format === 'csv') {
     $output = fopen('php://output', 'w');
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
     fputcsv($output, ['LEAGUE SUMMARY']);
-    fputcsv($output, ['League Name', $league['league_name']]);
-    fputcsv($output, ['Sport', $league['sport']]);
-    fputcsv($output, ['Division', $league['division']]);
-    fputcsv($output, ['Category', $league['category']]);
-    fputcsv($output, ['Max Teams', $league['max_team']]);
-    fputcsv($output, ['Start Date', $league['start_date']]);
-    fputcsv($output, ['End Date', $league['end_date']]);
-    fputcsv($output, ['Organizer', $league['organizer_name'] ?? 'Unknown']);
-    fputcsv($output, ['Archived On', $league['archived_at']]);
-    fputcsv($output, ['Status', $league['stat'] ?? 'Archived']);
+    fputcsv($output, ['League Name', reportCsvValue($league['league_name'])]);
+    fputcsv($output, ['Sport', reportCsvValue($league['sport'])]);
+    fputcsv($output, ['Division', reportCsvValue($league['division'])]);
+    fputcsv($output, ['Category', reportCsvValue($league['category'])]);
+    fputcsv($output, ['Max Teams', reportCsvValue($league['max_team'])]);
+    fputcsv($output, ['Start Date', reportCsvValue($league['start_date'])]);
+    fputcsv($output, ['End Date', reportCsvValue($league['end_date'])]);
+    fputcsv($output, ['Organizer', reportCsvValue($league['organizer_name'] ?? 'Unknown')]);
+    fputcsv($output, ['Archived On', reportCsvValue($league['archived_at'])]);
+    fputcsv($output, ['Status', reportCsvValue($league['stat'] ?? 'Archived')]);
     fputcsv($output, []);
     fputcsv($output, ['APPROVED TEAMS']);
     fputcsv($output, ['Team Name', 'Representative', 'Email', 'Phone', 'Status', 'Progression']);
     while ($team = $teams->fetch_assoc()) {
-        fputcsv($output, [$team['team_name'], $team['team_repre'], $team['email'], $team['phone'], $team['status'], $team['progression_status']]);
+        fputcsv($output, array_map('reportCsvValue', [$team['team_name'], $team['team_repre'], $team['email'], $team['phone'], $team['status'], $team['progression_status']]));
     }
     fputcsv($output, []);
     fputcsv($output, ['ROSTER PLAYERS']);
     fputcsv($output, ['Team', 'Player Name', 'Eligibility']);
     while ($player = $players->fetch_assoc()) {
-        fputcsv($output, [$player['team_name'], $player['full_name'], $player['eligibility_status']]);
+        fputcsv($output, array_map('reportCsvValue', [$player['team_name'], $player['full_name'], $player['eligibility_status']]));
     }
     fclose($output);
     exit;

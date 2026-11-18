@@ -47,24 +47,9 @@ $groupingEnabled=(int)$league['grouping_enabled'];
 /* Standings now come from the single canonical provider (config/scoringRules.php +
    includes/standingsProvider.php) so the configured points and tiebreaks apply
    everywhere — including set-based sports such as Volleyball. */
-$rankings=[];
-$allRankings=getLeagueStandings($conn,$id,['group_by'=>'legacy']);
-if(!$groupingEnabled){
-    $rankings=$allRankings;
-} else {
-    $seen=[];
-    foreach($groups as $rankGroup){
-        $rankGroupId=(int)$rankGroup['id'];
-        $groupRows=getLeagueStandings($conn,$id,['group_by'=>'legacy','group_filter'=>$rankGroupId,'scope_sql'=>'s.league_group_id = ?','scope_params'=>[$rankGroupId]]);
-        foreach($groupRows as $groupRow){ $rankings[]=$groupRow; $seen[(int)$groupRow['id']]=true; }
-    }
-    // Teams with no group keep their (empty) row, exactly as before.
-    $leftoverIds=[]; foreach($allRankings as $allRow) if(!isset($seen[(int)$allRow['id']])) $leftoverIds[]=(int)$allRow['id'];
-    if($leftoverIds){
-        $leftovers=getLeagueStandings($conn,$id,['group_by'=>'legacy','team_ids'=>$leftoverIds,'scope_sql'=>'1=0']);
-        foreach($leftovers as $leftoverRow){ $leftoverRow['group_name']=$leftoverRow['group_name'] ?: 'Ungrouped'; $rankings[]=$leftoverRow; }
-    }
-}
+/* Grouped and ungrouped rankings now come from one shared helper so the
+   organizer page and the report module cannot drift apart. */
+$rankings=getLeagueStandingsWithGroups($conn,$id);
 /* ------------------------------------------------------------------
    Standings analytics — feeds the KPI row so the table, the badges and
    the hero banner all read from the same numbers. Prepared statements only.

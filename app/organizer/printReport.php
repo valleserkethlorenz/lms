@@ -14,61 +14,47 @@ require_once __DIR__ . '/../../config/dbconnect.php';
 require_once __DIR__ . '/../../config/auth_guard.php';
 require_once __DIR__ . '/../../config/reportQuery.php';
 require_once __DIR__ . '/../../includes/reportDocument.php';
+require_once __DIR__ . '/../../includes/reportExport.php';
 
 requireRole([1]);
 requireActiveAccount($conn);
 
-header('Content-Type: text/html; charset=UTF-8');
-header('X-Robots-Tag: noindex, nofollow');
-
 $userId   = currentUserId();
-$type     = trim($_GET['report_type'] ?? 'registrations');
-$leagueId = (int)($_GET['league_id'] ?? 0);
-$sport    = trim($_GET['sport'] ?? '');
-$division = trim($_GET['division'] ?? '');
-$category = trim($_GET['category'] ?? '');
-$status   = trim($_GET['league_status'] ?? '');
-$from     = trim($_GET['from_date'] ?? '');
-$to       = trim($_GET['to_date'] ?? '');
-$auto     = ($_GET['auto'] ?? '') === '1';
+$userName = currentUserName();
+$autoRaw  = $_GET['auto'] ?? '';
+$auto     = is_string($autoRaw) && $autoRaw === '1';
 
-$report = null;
-$error  = '';
 try {
-    $report = buildReportQuery($conn, $userId, $type, $leagueId, $sport, $division, $category, $status, $from, $to);
-} catch (InvalidArgumentException $e) {
-    $error = $e->getMessage();
-} catch (RuntimeException $e) {
-    $error = $e->getMessage();
+    $filters = reportFiltersFromRequest($_GET);
+} catch (Throwable $e) {
+    reportSendErrorResponse($e, reportWantsJson(), 'reports.php');
 }
 
-if ($error !== '') {
-    http_response_code(400);
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Report error</title></head>'
-        . '<body style="font-family:Segoe UI,Arial,sans-serif;padding:40px;color:#1f2937;">'
-        . '<h2>Unable to build the report</h2><p>' . htmlspecialchars($error, ENT_QUOTES, 'UTF-8') . '</p>'
-        . '<p><a href="reports.php">Back to Reports</a></p></body></html>';
-    exit;
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
 }
 
-// League name for the letterhead (ownership was already enforced by buildReportQuery).
-$leagueName = '';
-if ($leagueId > 0) {
-    $leagueStmt = $conn->prepare("SELECT league_name FROM tbl_league WHERE id=? AND created_by=? LIMIT 1");
-    $leagueStmt->bind_param('ii', $leagueId, $userId);
-    $leagueStmt->execute();
-    $leagueRow = $leagueStmt->get_result()->fetch_assoc();
-    $leagueStmt->close();
-    $leagueName = (string)($leagueRow['league_name'] ?? '');
+try {
+    $report = buildReportQuery($conn, $userId, $filters);
+} catch (Throwable $e) {
+    reportSendErrorResponse($e, reportWantsJson(), 'reports.php');
 }
 
-auditLog($conn, 'Print Report', 'Opened printable report: ' . $report['title'] . ($leagueId ? " (league ID $leagueId)" : ' (all owned leagues)'));
+$leagueId   = (int) $filters['league_id'];
+$leagueName = (string) ($report['league']['league_name'] ?? '');
+
+reportAuditSafely(
+    $conn,
+    'Print Report',
+    'Opened printable report: ' . $report['title']
+        . ($leagueId ? " (league ID $leagueId)" : ' (all owned leagues)')
+);
 
 $document = buildReportDocumentHtml($report, [
     'subtitle'     => $leagueName !== '' ? $leagueName : 'All Owned Leagues',
-    'generated_by' => currentUserName(),
+    'generated_by' => $userName,
     'logo_path'    => dirname(__DIR__, 2) . '/assets/images/logo.jpg',
-    'signatories'  => ['Prepared by' => currentUserName(), 'Approved by' => ''],
+    'signatories'  => ['Prepared by' => $userName, 'Approved by' => ''],
 ]);
 
 // Toolbar (hidden when printing) and optional auto-print.
@@ -78,4 +64,10 @@ if ($auto) {
     $document = str_replace('</body>', '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});</script></body>', $document);
 }
 
+header('Content-Type: text/html; charset=UTF-8');
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+header('X-Robots-Tag: noindex, nofollow');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
 echo $document;

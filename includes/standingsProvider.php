@@ -185,3 +185,81 @@ if (!function_exists('getLeagueStandings')) {
         return sortStandings(array_values($rows), $rules, $h2h);
     }
 }
+
+if (!function_exists('getLeagueStandingsWithGroups')) {
+    /**
+     * Standings rows for one league, ranked per group when grouping is enabled.
+     *
+     * This mirrors the grouping workflow in app/organizer/standing.php exactly:
+     * each group is ranked only on its own matches, teams without a group keep
+     * an (empty) row, and group order follows display_order.
+     *
+     * @return array Ranked rows, with group_name populated.
+     */
+    function getLeagueStandingsWithGroups(mysqli $conn, int $leagueId): array
+    {
+        $leagueStmt = $conn->prepare("SELECT grouping_enabled FROM tbl_league WHERE id = ? LIMIT 1");
+        if (!$leagueStmt) {
+            return [];
+        }
+        $leagueStmt->bind_param('i', $leagueId);
+        $leagueStmt->execute();
+        $leagueRow = $leagueStmt->get_result()->fetch_assoc();
+        $leagueStmt->close();
+
+        $groupingEnabled = (int) ($leagueRow['grouping_enabled'] ?? 0) === 1;
+        $allRankings     = getLeagueStandings($conn, $leagueId, ['group_by' => 'legacy']);
+
+        if (!$groupingEnabled) {
+            return $allRankings;
+        }
+
+        $groups = [];
+        $groupStmt = $conn->prepare("SELECT id, name, display_order FROM tbl_league_group WHERE league_id = ? ORDER BY display_order, name");
+        if ($groupStmt) {
+            $groupStmt->bind_param('i', $leagueId);
+            $groupStmt->execute();
+            $groupRes = $groupStmt->get_result();
+            while ($group = $groupRes->fetch_assoc()) {
+                $groups[] = $group;
+            }
+            $groupStmt->close();
+        }
+
+        $rankings = [];
+        $seen     = [];
+        foreach ($groups as $group) {
+            $groupId   = (int) $group['id'];
+            $groupRows = getLeagueStandings($conn, $leagueId, [
+                'group_by'     => 'legacy',
+                'group_filter' => $groupId,
+                'scope_sql'    => 's.league_group_id = ?',
+                'scope_params' => [$groupId],
+            ]);
+            foreach ($groupRows as $groupRow) {
+                $rankings[] = $groupRow;
+                $seen[(int) $groupRow['id']] = true;
+            }
+        }
+
+        $leftoverIds = [];
+        foreach ($allRankings as $allRow) {
+            if (!isset($seen[(int) $allRow['id']])) {
+                $leftoverIds[] = (int) $allRow['id'];
+            }
+        }
+        if ($leftoverIds) {
+            $leftovers = getLeagueStandings($conn, $leagueId, [
+                'group_by'  => 'legacy',
+                'team_ids'  => $leftoverIds,
+                'scope_sql' => '1=0',
+            ]);
+            foreach ($leftovers as $leftoverRow) {
+                $leftoverRow['group_name'] = $leftoverRow['group_name'] ?: 'Ungrouped';
+                $rankings[] = $leftoverRow;
+            }
+        }
+
+        return $rankings;
+    }
+}
