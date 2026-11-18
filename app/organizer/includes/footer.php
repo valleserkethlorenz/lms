@@ -1,3 +1,4 @@
+<?php $lmsBase = $lmsBase ?? '/lms'; ?>
 <!-- jQuery -->
 <script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/jquery/3.7.1/jquery.min.js"></script>
 <!-- Bootstrap Bundle JS -->
@@ -31,9 +32,9 @@
 <!-- LMS modal dialogs (shared component) -->
 <script src="<?= htmlspecialchars($lmsBase) ?>/assets/js/lms-dialog.js"></script>
 <!-- Alertify JS -->
-<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/alertifyjs/1.13.1/alertify.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase ?? '') ?>/assets/vendor/alertifyjs/1.13.1/alertify.min.js"></script>
 <!-- CanvasJS for charts -->
-<script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/canvasjs/3.18.0/canvasjs.min.js"></script>
+<script src="<?= htmlspecialchars($lmsBase ?? '') ?>/assets/vendor/canvasjs/3.18.0/canvasjs.min.js"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         document.querySelectorAll("input").forEach(function(input) {
@@ -47,7 +48,6 @@
 
         LmsDialog.confirm({
             title: 'Log out of your account?',
-            text: 'You will need to sign in again to continue managing your leagues.',
             confirmButtonText: 'Yes, log out',
             cancelButtonText: 'Stay signed in'
         }).then((confirmed) => {

@@ -63,7 +63,6 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
     .sidelist a:hover { background:rgba(47,125,228,0.08); border-left-color:#2f7de4; color:#fff !important; }
     .sidelist > a.actives { background:rgba(47,125,228,0.15); border-left-color:#2f7de4; color:#fff !important; font-weight:600; }
     #accordionSidebar { display:flex; flex-direction:column; height:100vh; padding-top:0.5rem; background-color:#09173c; }
-    #accordionSidebar #logout-item { margin-top:auto; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; padding-bottom:12px; }
     .sidebar-logo-wrap { padding-top:16px; padding-bottom:12px; }
     .sidebar-logo { width:64px; height:64px; border-radius:50%; overflow:hidden; margin:0 auto; box-shadow:0 4px 12px rgba(0,0,0,0.18); }
     .sidebar-logo img { width:100%; height:100%; object-fit:cover; display:block; border-radius:50%; }
@@ -74,6 +73,27 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
     .topbar { background-color:#09173c; display:flex; align-items:center; gap:4px; padding:0 .75rem; }
     .topbar .topbar-title { margin:0; color:#fff; font-size:1.25rem; font-weight:500; letter-spacing:1px; }
     .topbar-toggle { display:inline-flex; align-items:center; justify-content:center; }
+    /* ── Topbar account menu (floating window) ── */
+    .topbar .topbar-account { position:relative; }
+    .topbar .topbar-account-toggle { display:flex; align-items:center; margin:0; padding:.35rem .5rem; border:0; border-radius:8px; background:transparent; color:#fff; line-height:1.2; text-align:left; cursor:pointer; }
+    .topbar .topbar-account-toggle:hover,
+    .topbar .topbar-account-toggle[aria-expanded="true"] { background:rgba(255,255,255,.08); }
+    .topbar .topbar-account-toggle:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+    .topbar .topbar-account-caret { margin-left:8px; font-size:11px; opacity:.75; transition:transform .2s ease; }
+    .topbar .topbar-account-toggle[aria-expanded="true"] .topbar-account-caret { transform:rotate(180deg); }
+    .topbar .topbar-account-menu { position:absolute; top:100%; right:0; min-width:236px; margin-top:10px; padding:6px; border:1px solid #dbe4f0; border-radius:10px; background:#fff; box-shadow:0 18px 40px -18px rgba(7,17,41,.45); }
+    .topbar .topbar-account-menu .account-menu-identity { padding:10px 12px 8px; }
+    .topbar .topbar-account-menu .account-menu-name { display:block; font-size:13px; font-weight:600; color:#172742; line-height:1.3; overflow-wrap:anywhere; }
+    .topbar .topbar-account-menu .account-menu-role { display:block; margin-top:2px; font-size:11px; color:#75809a; }
+    .topbar .topbar-account-menu .dropdown-divider { margin:4px 0; border-color:#e8edf4; }
+    .topbar .topbar-account-menu .dropdown-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:6px; color:#1f2d48; font-size:13px; font-weight:500; line-height:1.3; }
+    .topbar .topbar-account-menu .dropdown-item i { width:18px; font-size:15px; color:#2f6fed; text-align:center; }
+    .topbar .topbar-account-menu .dropdown-item:hover,
+    .topbar .topbar-account-menu .dropdown-item:focus { background:#eef3fc; color:#12408f; }
+    .topbar .topbar-account-menu .dropdown-item.logout-item,
+    .topbar .topbar-account-menu .dropdown-item.logout-item i { color:#b42318; }
+    .topbar .topbar-account-menu .dropdown-item.logout-item:hover,
+    .topbar .topbar-account-menu .dropdown-item.logout-item:focus { background:#fdf0ef; color:#8f1c13; }
     .role-notification-link { position:relative; display:inline-flex !important; align-items:center; justify-content:center; width:46px; height:46px; padding:0 !important; margin-right:8px; border-radius:50%; line-height:1; cursor:pointer; z-index:1; }
     .role-notification-link:hover { background:rgba(255,255,255,.1); }
     .role-notification-link .bi-bell-fill { display:block; font-size:24px; line-height:1; }
@@ -97,10 +117,8 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
     @media (max-width:768px) {
         #accordionSidebar { position:fixed; top:70px; left:-250px; width:220px; height:calc(100vh - 70px); height:calc(100dvh - 70px); min-height:0; max-height:calc(100vh - 70px); max-height:calc(100dvh - 70px); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; z-index:1050; transition:left .3s ease-in-out; }
         #accordionSidebar.active { left:0; }
-        #accordionSidebar #logout-item { position:sticky; bottom:0; z-index:1; flex-shrink:0; background:#09173c; }
         #accordionSidebar .sidebar-logo-wrap { position:sticky; top:0; padding-top:8px; padding-bottom:8px; z-index:2; background:#09173c; }
         #accordionSidebar .sidebar-logo { width:48px; height:48px; }
-        #accordionSidebar #logout-item { padding-top:6px; padding-bottom:6px; }
         #accordionSidebar .nav-item { width:100%; }
         #accordionSidebar .nav-item .nav-link {
             display:flex !important;
@@ -137,6 +155,7 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
         .topbar .account-link { width:42px; height:42px; margin:0; }
         .topbar .account-link { display:inline-flex; align-items:center; justify-content:center; padding:0 !important; }
         .topbar .account-link .account-menu-label { display:none; }
+        .topbar .topbar-account-caret { display:none; }
     }
 </style>
 
@@ -159,17 +178,6 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
         </a>
     </li>
     <?php endforeach; ?>
-    <li class="nav-item sidelist" id="logout-item">
-        <form class="trLeagueLogoutForm m-0 p-0" style="width:100%;"
-              data-logout-url="app/tr/action/logout.php"
-              data-logout-csrf="<?= htmlspecialchars($trLogoutCsrf, ENT_QUOTES, 'UTF-8') ?>">
-            <button type="submit" class="nav-link text-start w-100 border-0 bg-transparent" style="font-weight:400;color:#fff;padding-left:1rem;">
-                <i class="bi bi-box-arrow-right"></i>
-                <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Logout</span>
-            </button>
-        </form>
-    </li>
-    <hr class="sidebar-divider d-none d-md-block">
 </ul>
 
 <nav class="navbar navbar-expand navbar-light topbar flex-nowrap shadow" aria-label="Team representative portal">
@@ -184,11 +192,29 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
                 <?php if ($_bar_unread > 0): ?><span class="role-notification-badge"><?= $_bar_unread > 99 ? '99+' : (int) $_bar_unread ?></span><?php endif; ?>
             </button>
         </li>
-        <li class="nav-item no-arrow">
-            <a class="nav-link text-white account-link" href="<?= htmlspecialchars($trNavBase . 'account.php', ENT_QUOTES, 'UTF-8') ?>" aria-label="My Account">
-                <i class="bi bi-person-circle" style="font-size:32px;color:white;"></i>
+        <li class="nav-item dropdown topbar-account">
+            <button class="nav-link text-white topbar-account-toggle account-link" type="button" id="trLeagueAccountMenuToggle" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Open account menu">
+                <i class="bi bi-person-circle" style="font-size:32px;color:white;" aria-hidden="true"></i>
                 <span class="account-menu-label"><b><?= htmlspecialchars($trLoginName, ENT_QUOTES, 'UTF-8') ?></b><br><span class="user-role-text">Team Representative</span></span>
-            </a>
+                <i class="bi bi-chevron-down topbar-account-caret" aria-hidden="true"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end topbar-account-menu" aria-labelledby="trLeagueAccountMenuToggle">
+                <li class="account-menu-identity">
+                    <span class="account-menu-name"><?= htmlspecialchars($trLoginName, ENT_QUOTES, 'UTF-8') ?></span>
+                    <span class="account-menu-role">Team Representative</span>
+                </li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="<?= htmlspecialchars($trNavBase . 'account.php', ENT_QUOTES, 'UTF-8') ?>"><i class="bi bi-person-gear" aria-hidden="true"></i>My Account</a>
+                </li>
+                <li>
+                    <form class="trLeagueLogoutForm m-0 p-0"
+                          data-logout-url="app/tr/action/logout.php"
+                          data-logout-csrf="<?= htmlspecialchars($trLogoutCsrf, ENT_QUOTES, 'UTF-8') ?>">
+                        <button type="submit" class="dropdown-item logout-item"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Logout</button>
+                    </form>
+                </li>
+            </ul>
         </li>
     </ul>
 </nav>
@@ -284,7 +310,6 @@ $trNavLinks = require __DIR__ . '/../app/tr/includes/nav-links.php';
             if (window.LmsDialog) {
                 LmsDialog.confirm({
                     title: 'Log out of your account?',
-                    text: 'You will need to sign in again to continue managing your team.',
                     confirmButtonText: 'Yes, log out',
                     cancelButtonText: 'Stay signed in'
                 }).then(function (confirmed) { if (confirmed) send(); });

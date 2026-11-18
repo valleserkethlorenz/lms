@@ -1,3 +1,12 @@
+<?php
+if (!isset($lmsBase) || !is_string($lmsBase)) {
+    $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+    $appPosition = strpos($scriptName, '/app/');
+    $lmsBase = $appPosition !== false
+        ? substr($scriptName, 0, $appPosition)
+        : '/lms';
+}
+?>
 <!-- jQuery -->
 <script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/jquery/3.7.1/jquery.min.js"></script>
 <!-- Bootstrap Bundle JS -->
@@ -42,7 +51,6 @@
         e.preventDefault();
         LmsDialog.confirm({
             title: 'Log out of your account?',
-            text: 'You will need to sign in again to keep managing your assigned matches.',
             confirmButtonText: 'Yes, log out',
             cancelButtonText: 'Stay signed in'
         }).then((confirmed) => {

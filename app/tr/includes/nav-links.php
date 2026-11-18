@@ -14,5 +14,4 @@ return [
     ['key' => 'dashboard', 'id' => 'dashboard-item', 'label' => 'Dashboard',     'icon' => 'bi-speedometer2', 'href' => 'dashboard.php'],
     ['key' => 'browse',    'id' => 'browse-item',    'label' => 'Browse League', 'icon' => 'bi-search',       'href' => 'browse_leagues.php'],
     ['key' => 'league',    'id' => 'leagues-item',   'label' => 'Application',   'icon' => 'bi-trophy',       'href' => 'league.php'],
-    ['key' => 'account',   'id' => 'account-item',   'label' => 'My Account',    'icon' => 'bi-person-gear',  'href' => 'account.php'],
 ];

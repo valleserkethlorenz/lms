@@ -19,7 +19,6 @@ $conn     = $conn ?? null;
         #content-wrapper { margin-left:0 !important; width:100%; }
     }
     #accordionSidebar { display:flex; flex-direction:column; height:100vh; padding-top:0.5rem; }
-    #accordionSidebar .nav-item#logout-item { margin-top:auto; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; padding-bottom:12px; }
     .sidebar-logo-wrap { padding-top:16px; padding-bottom:12px; }
     .sidebar-logo { width:64px; height:64px; border-radius:50%; overflow:hidden; margin:0 auto; box-shadow:0 4px 12px rgba(0,0,0,0.18); }
     .sidebar-logo img { width:100%; height:100%; object-fit:cover; display:block; border-radius:50%; }
@@ -28,6 +27,27 @@ $conn     = $conn ?? null;
     .lms-sidebar-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1045; display:none; }
     .lms-sidebar-backdrop.show { display:block; }
     .topbar-toggle { display:inline-flex; align-items:center; justify-content:center; }
+    /* ── Topbar account menu (floating window) ── */
+    .topbar .topbar-account { position:relative; }
+    .topbar .topbar-account-toggle { display:flex; align-items:center; margin:0; padding:.35rem .5rem; border:0; border-radius:8px; background:transparent; color:#fff; line-height:1.2; text-align:left; cursor:pointer; }
+    .topbar .topbar-account-toggle:hover,
+    .topbar .topbar-account-toggle[aria-expanded="true"] { background:rgba(255,255,255,.08); }
+    .topbar .topbar-account-toggle:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+    .topbar .topbar-account-caret { margin-left:8px; font-size:11px; opacity:.75; transition:transform .2s ease; }
+    .topbar .topbar-account-toggle[aria-expanded="true"] .topbar-account-caret { transform:rotate(180deg); }
+    .topbar .topbar-account-menu { position:absolute; top:100%; right:0; min-width:236px; margin-top:10px; padding:6px; border:1px solid #dbe4f0; border-radius:10px; background:#fff; box-shadow:0 18px 40px -18px rgba(7,17,41,.45); }
+    .topbar .topbar-account-menu .account-menu-identity { padding:10px 12px 8px; }
+    .topbar .topbar-account-menu .account-menu-name { display:block; font-size:13px; font-weight:600; color:#172742; line-height:1.3; overflow-wrap:anywhere; }
+    .topbar .topbar-account-menu .account-menu-role { display:block; margin-top:2px; font-size:11px; color:#75809a; }
+    .topbar .topbar-account-menu .dropdown-divider { margin:4px 0; border-color:#e8edf4; }
+    .topbar .topbar-account-menu .dropdown-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:6px; color:#1f2d48; font-size:13px; font-weight:500; line-height:1.3; }
+    .topbar .topbar-account-menu .dropdown-item i { width:18px; font-size:15px; color:#2f6fed; text-align:center; }
+    .topbar .topbar-account-menu .dropdown-item:hover,
+    .topbar .topbar-account-menu .dropdown-item:focus { background:#eef3fc; color:#12408f; }
+    .topbar .topbar-account-menu .dropdown-item.logout-item,
+    .topbar .topbar-account-menu .dropdown-item.logout-item i { color:#b42318; }
+    .topbar .topbar-account-menu .dropdown-item.logout-item:hover,
+    .topbar .topbar-account-menu .dropdown-item.logout-item:focus { background:#fdf0ef; color:#8f1c13; }
     @media (min-width:769px) {
         body.lms-mini .sidebar { width:68px !important; min-width:68px !important; max-width:68px !important; }
         body.lms-mini #content-wrapper { margin-left:68px !important; }
@@ -42,10 +62,8 @@ $conn     = $conn ?? null;
     }
     @media (max-width:768px) {
         /* Off-canvas drawer sits below the 70px topbar and must never grow past
-           the visible viewport (SB Admin forces .sidebar min-height:100vh, which
-           otherwise pushes the sticky logout 70px below the screen). */
+           the visible viewport (SB Admin forces .sidebar min-height:100vh). */
         .sidebar { height:100vh; height:100dvh; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
-        .sidebar #logout-item { position:sticky; bottom:0; z-index:2; flex-shrink:0; background:#09173c; }
         #accordionSidebar {
             top:70px;
             height:calc(100vh - 70px);
@@ -83,7 +101,6 @@ $conn     = $conn ?? null;
             line-height:1.3;
             white-space:nowrap;
         }
-        #accordionSidebar .nav-item#logout-item { padding-top:6px; padding-bottom:6px; }
         #content-wrapper { margin-left:0 !important; width:100%; }
         .topbar { left:0 !important; right:0 !important; width:100% !important; z-index:1060 !important; height:70px; min-height:70px; padding-top:0; padding-bottom:0; }
         .topbar-toggle { flex:0 0 auto; margin:0 10px 0 0 !important; }
@@ -96,6 +113,7 @@ $conn     = $conn ?? null;
         .topbar .navbar-nav > .nav-item { margin:0 !important; }
         .topbar .admin-profile { width:42px; height:42px; margin:0; padding:0 !important; border-radius:50%; justify-content:center; }
         .topbar .admin-profile-label { display:none; }
+        .topbar .topbar-account-caret { display:none; }
     }
 </style>
 <div id="wrapper">
@@ -139,21 +157,6 @@ $conn     = $conn ?? null;
                 <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Audit Log</span>
             </a>
         </li>
-        <li class="nav-item sidelist" id="settings-item">
-            <a class="nav-link" href="settings.php" style="font-weight:500;">
-                <i class="bi bi-shield-lock-fill"></i>
-                <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Account Settings</span>
-            </a>
-        </li>
-        <li class="nav-item sidelist" id="logout-item">
-            <form class="logoutForm m-0 p-0" style="width:100%;">
-                <button type="submit" class="nav-link text-start w-100 border-0 bg-transparent" style="font-weight:400;color:#fff;padding-left:1rem;">
-                    <i class="bi bi-box-arrow-right"></i>
-                    <span style="letter-spacing:0.5px;text-transform:uppercase;font-size:13px;">Logout</span>
-                </button>
-            </form>
-        </li>
-        <hr class="sidebar-divider d-none d-md-block">
     </ul>
 
     <!-- Content Wrapper -->
@@ -166,13 +169,29 @@ $conn     = $conn ?? null;
                 <h1 class="mt-2 topbar-title" style="color:white;letter-spacing:1px;font-weight:500;">ADMIN PANEL</h1>
                 <ul class="navbar-nav ms-auto align-items-center">
                     
-                    <li class="nav-item no-arrow">
-                        <div class="nav-link d-flex align-items-center admin-profile" style="color:white;">
-                            <i class="bi bi-person-circle" style="font-size:32px;color:white;"></i>
-                            <div class="ms-2 text-capitalize admin-profile-label" style="color:white;font-size:13px;">
+                    <li class="nav-item dropdown topbar-account">
+                        <button class="nav-link topbar-account-toggle admin-profile" type="button" id="adminAccountMenuToggle" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Open account menu">
+                            <i class="bi bi-person-circle" style="font-size:32px;color:white;" aria-hidden="true"></i>
+                            <span class="ms-2 text-capitalize admin-profile-label" style="color:white;font-size:13px;">
                                 <b><?php echo htmlspecialchars($full); ?></b><br><span class="user-role-text">Admin</span>
-                            </div>
-                        </div>
+                            </span>
+                            <i class="bi bi-chevron-down topbar-account-caret" aria-hidden="true"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end topbar-account-menu" aria-labelledby="adminAccountMenuToggle">
+                            <li class="account-menu-identity">
+                                <span class="account-menu-name"><?php echo htmlspecialchars($full); ?></span>
+                                <span class="account-menu-role">Admin</span>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="settings.php"><i class="bi bi-person-gear" aria-hidden="true"></i>Account Settings</a>
+                            </li>
+                            <li>
+                                <form class="logoutForm m-0 p-0">
+                                    <button type="submit" class="dropdown-item logout-item"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Logout</button>
+                                </form>
+                            </li>
+                        </ul>
                     </li>
                 </ul>
             </nav>

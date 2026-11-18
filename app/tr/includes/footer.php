@@ -1,3 +1,4 @@
+<?php $lmsBase = $lmsBase ?? ''; ?>
 <!-- jQuery -->
 <script src="<?= htmlspecialchars($lmsBase) ?>/assets/vendor/jquery/3.7.1/jquery.min.js"></script>
 <!-- Bootstrap Bundle JS -->
@@ -47,7 +48,6 @@
 
         LmsDialog.confirm({
             title: 'Log out of your account?',
-            text: 'You will need to sign in again to continue managing your team.',
             confirmButtonText: 'Yes, log out',
             cancelButtonText: 'Stay signed in'
         }).then((confirmed) => {
