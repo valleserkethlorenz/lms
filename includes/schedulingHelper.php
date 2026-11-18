@@ -652,6 +652,116 @@ function updateMatchResult($conn, $scheduleId, $teamAScore, $teamBScore, $winner
 }
 
 /**
+ * Normalize a schedule edit and report which fields actually changed.
+ *
+ * The organizer edit form always posts the date, time, venue and committee, so
+ * the presence of a POST value cannot decide whether a reschedule happened.
+ * This helper compares the posted values against the stored row (normalising
+ * date/time formats) and also resolves the final team pair so the caller can
+ * notify only the representatives whose match really changed.
+ *
+ * @param array $current  Stored row fields: date, time, venue, team_a, team_b, committee_user_id.
+ * @param array $incoming Posted fields: date, time, venue, team_a_id, team_b_id, committee_user_id.
+ *
+ * @return array<string,mixed>
+ */
+function scheduleChangeSet(array $current, array $incoming): array
+{
+    $normalizeDate = static function ($value): string {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return '';
+        }
+        $timestamp = strtotime($value);
+        return $timestamp ? date('Y-m-d', $timestamp) : $value;
+    };
+    $normalizeTime = static function ($value): string {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '') {
+            return '';
+        }
+        $timestamp = strtotime($value);
+        return $timestamp ? date('H:i:s', $timestamp) : $value;
+    };
+    $normalizeText = static function ($value): string {
+        return trim((string) ($value ?? ''));
+    };
+    $toInt = static function ($value): int {
+        return max(0, (int) $value);
+    };
+
+    $oldDate        = $normalizeDate($current['date'] ?? '');
+    $oldTime        = $normalizeTime($current['time'] ?? '');
+    $oldVenue       = $normalizeText($current['venue'] ?? '');
+    $oldTeamA       = $toInt($current['team_a'] ?? 0);
+    $oldTeamB       = $toInt($current['team_b'] ?? 0);
+    $oldCommitteeId = $toInt($current['committee_user_id'] ?? 0);
+
+    // An empty/missing date or time means "keep the current value"; the update
+    // handler only writes those columns when a value was posted.
+    $incomingDate = $incoming['date'] ?? null;
+    $newDate = ($incomingDate !== null && trim((string) $incomingDate) !== '')
+        ? $normalizeDate($incomingDate)
+        : $oldDate;
+
+    $incomingTime = $incoming['time'] ?? null;
+    $newTime = ($incomingTime !== null && trim((string) $incomingTime) !== '')
+        ? $normalizeTime($incomingTime)
+        : $oldTime;
+
+    // Venue is always written when the field is present, including an empty
+    // value, because the edit form posts the selected utility venue.
+    $newVenue = array_key_exists('venue', $incoming) && $incoming['venue'] !== null
+        ? $normalizeText($incoming['venue'])
+        : $oldVenue;
+
+    $incomingTeamA = $toInt($incoming['team_a_id'] ?? 0);
+    $incomingTeamB = $toInt($incoming['team_b_id'] ?? 0);
+    $finalTeamA    = $incomingTeamA > 0 ? $incomingTeamA : $oldTeamA;
+    $finalTeamB    = $incomingTeamB > 0 ? $incomingTeamB : $oldTeamB;
+
+    // The update handler always writes committee_user_id; 0 means "unassigned".
+    $finalCommitteeId = $toInt($incoming['committee_user_id'] ?? 0);
+
+    $oldTeams = array_values(array_unique(array_filter([$oldTeamA, $oldTeamB], static function ($id) {
+        return $id > 0;
+    })));
+    $newTeams = array_values(array_unique(array_filter([$finalTeamA, $finalTeamB], static function ($id) {
+        return $id > 0;
+    })));
+
+    $dateChanged       = $newDate !== $oldDate;
+    $timeChanged       = $newTime !== $oldTime;
+    $venueChanged      = $newVenue !== $oldVenue;
+    $teamsChanged      = $finalTeamA !== $oldTeamA || $finalTeamB !== $oldTeamB;
+    $committeeChanged  = $finalCommitteeId !== $oldCommitteeId;
+
+    return [
+        'old_date'           => $oldDate,
+        'old_time'           => $oldTime,
+        'old_venue'          => $oldVenue,
+        'old_team_a'         => $oldTeamA,
+        'old_team_b'         => $oldTeamB,
+        'old_committee_id'   => $oldCommitteeId,
+        'new_date'           => $newDate,
+        'new_time'           => $newTime,
+        'new_venue'          => $newVenue,
+        'final_team_a'       => $finalTeamA,
+        'final_team_b'       => $finalTeamB,
+        'final_committee_id' => $finalCommitteeId,
+        'date_changed'       => $dateChanged,
+        'time_changed'       => $timeChanged,
+        'venue_changed'      => $venueChanged,
+        'teams_changed'      => $teamsChanged,
+        'committee_changed'  => $committeeChanged,
+        'schedule_changed'   => $dateChanged || $timeChanged || $venueChanged || $teamsChanged,
+        'added_teams'        => array_values(array_diff($newTeams, $oldTeams)),
+        'removed_teams'      => array_values(array_diff($oldTeams, $newTeams)),
+        'kept_teams'         => array_values(array_intersect($oldTeams, $newTeams)),
+    ];
+}
+
+/**
  * Resolve scheduling conflict
  */
 function resolveConflict($conn, $scheduleId, $newDate, $newTime, $newVenue = null) {

@@ -574,7 +574,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // already published, so a delivery failure must not be reported to
             // the organizer as a failed publish.
             try {
-                notifyNewLeague($conn, $id, $league['league_name'], $league['regis_end']);
+                notifyNewLeague($conn, $id, $league['league_name'], $league['regis_end'], $league['regis_start'] ?? null);
             } catch (Throwable $e) {
                 error_log('[notification] New-league broadcast failed for league ' . $id . ': ' . $e->getMessage());
             }
@@ -916,6 +916,39 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 recomputeAndPersistLeagueStat($conn, $leagueIdForRecompute);
             }
 
+            // Tell the owner when the last slot has just been filled. The
+            // approval guard above prevents over-filling, so this is the
+            // transition into a full league.
+            if ($leagueIdForRecompute && $teamMaxTeams > 0
+                && countLeagueApprovedTeams($conn, $leagueIdForRecompute) >= $teamMaxTeams) {
+                try {
+                    $lgStmt = $conn->prepare("SELECT league_name, created_by FROM tbl_league WHERE id = ? LIMIT 1");
+                    $lgStmt->bind_param('i', $leagueIdForRecompute);
+                    $lgStmt->execute();
+                    $lg = $lgStmt->get_result()->fetch_assoc();
+                    $lgStmt->close();
+
+                    $ownerId = (int) ($lg['created_by'] ?? 0);
+                    if ($ownerId > 0) {
+                        $dupe = $conn->prepare("SELECT 1 FROM tbl_notification WHERE user_id = ? AND type = 'league_full' AND related_id = ? AND DATE(created) = CURDATE() LIMIT 1");
+                        $dupe->bind_param('ii', $ownerId, $leagueIdForRecompute);
+                        $dupe->execute();
+                        $alreadySent = (bool) $dupe->get_result()->fetch_row();
+                        $dupe->close();
+
+                        if (!$alreadySent) {
+                            $leagueName = trim((string) ($lg['league_name'] ?? ''));
+                            $leagueLabel = $leagueName !== '' ? "\"$leagueName\"" : 'The league';
+                            createNotification($conn, $ownerId, 'league_full', 'League Full',
+                                "$leagueLabel is now full ($teamMaxTeams/$teamMaxTeams approved teams). Registration is closed to new teams.",
+                                $leagueIdForRecompute);
+                        }
+                    }
+                } catch (Throwable $e) {
+                    error_log('[notification] League-full notice failed: ' . $e->getMessage());
+                }
+            }
+
             echo json_encode($res);
             exit;
 
@@ -942,7 +975,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->bind_param("sii", $remarks, $reviewerId, $team_id);
         if ($stmt->execute()) {
             if ($stmt->affected_rows !== 1) { echo json_encode(['status'=>409,'msg'=>'This registration is no longer Pending.']); exit; }
-            notifyTeamRejected($conn, $team_id, $team_name, $remarks);
+            try {
+                notifyTeamRejected($conn, $team_id, $team_name, $remarks);
+            } catch (Throwable $e) {
+                error_log('[notification] Rejection notice failed for team ' . $team_id . ': ' . $e->getMessage());
+            }
             auditLog($conn, 'Reject Registration', "Rejected team registration: $team_name (ID $team_id). Remarks: $remarks");
             // Persist computed status after team rejection (may affect slots)
             $leagueIdForRecompute = null;
@@ -1021,7 +1058,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if ($stmt->affected_rows !== 1) { $stmt->close(); echo json_encode(['status'=>409,'msg'=>'This registration is no longer Pending.']); exit; }
         $stmt->close();
         $deadline = date('M d, Y h:i A', strtotime('+72 hours'));
-        notifyTeamCorrectionRequested($conn, $team_id, $team['team_name'], $remarks . ". Correction deadline: $deadline");
+        try {
+            notifyTeamCorrectionRequested($conn, $team_id, $team['team_name'], $remarks . ". Correction deadline: $deadline");
+        } catch (Throwable $e) {
+            error_log('[notification] Correction notice failed for team ' . $team_id . ': ' . $e->getMessage());
+        }
         auditLog($conn, 'Request Registration Correction', "Returned team registration {$team['team_name']} (ID $team_id). Remarks: $remarks");
         echo json_encode(['status'=>201,'msg'=>"Registration returned for correction. The representative has until $deadline."]);
         exit;
@@ -1033,7 +1074,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if(!$teamId || !$playerId || !in_array($decision,$allowed,true)) { echo json_encode(['status'=>400,'msg'=>'Invalid player eligibility decision.']); exit; }
         if($decision!=='Eligible' && $remarks==='') { echo json_encode(['status'=>400,'msg'=>'Remarks are required for this decision.']); exit; }
         if(mb_strlen($remarks)>500) { echo json_encode(['status'=>400,'msg'=>'Remarks must not exceed 500 characters.']); exit; }
-        $playerStmt=$conn->prepare("SELECT p.name,t.team_name,t.status FROM tbl_player p JOIN tbl_team t ON t.id=CAST(p.team_id AS UNSIGNED) WHERE p.id=? AND t.id=? LIMIT 1");
+        $playerStmt=$conn->prepare("SELECT p.name,t.team_name,t.status,t.user_id,l.league_name FROM tbl_player p JOIN tbl_team t ON t.id=CAST(p.team_id AS UNSIGNED) JOIN tbl_league l ON l.id=t.league_id WHERE p.id=? AND t.id=? LIMIT 1");
         $playerStmt->bind_param('ii',$playerId,$teamId); $playerStmt->execute(); $player=$playerStmt->get_result()->fetch_assoc(); $playerStmt->close();
         if(!$player) { echo json_encode(['status'=>404,'msg'=>'Player was not found in this registration.']); exit; }
         if(strtolower($player['status'])!=='pending') { echo json_encode(['status'=>409,'msg'=>'Player decisions can only be changed while the application is Pending.']); exit; }
@@ -1045,6 +1086,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $update->close();
             auditLog($conn,'Review Player Eligibility',"Marked player {$player['name']} (ID $playerId) as $decision for team {$player['team_name']} (ID $teamId).".($remarks!==''?" Remarks: $remarks":''));
             $conn->commit();
+            if (in_array($decision, ['Needs Correction', 'Ineligible'], true) && (int)($player['user_id'] ?? 0) > 0) {
+                try {
+                    $leagueLabel = trim((string)($player['league_name'] ?? ''));
+                    createNotification($conn, (int)$player['user_id'], 'team_correction',
+                        'Player Eligibility Update',
+                        'Player "' . $player['name'] . '" on team "' . $player['team_name'] . '"'
+                            . ($leagueLabel !== '' ? ' in "' . $leagueLabel . '"' : '')
+                            . ' was marked "' . $decision . '".'
+                            . ($remarks !== '' ? ' Remarks: ' . $remarks : ''),
+                        $teamId);
+                } catch (Throwable $e) {
+                    error_log('[notification] Player eligibility notice failed: ' . $e->getMessage());
+                }
+            }
             $message=$decision==='Needs Correction'
                 ? 'Player marked for correction. Review the remaining players, then return the application.'
                 : 'Player eligibility updated.';
@@ -1074,7 +1129,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if(mb_strlen($remarks)>500) { echo json_encode(['status'=>400,'msg'=>'Remarks must not exceed 500 characters.']); exit; }
         // Verify the document belongs to a team in the organizer's league
         $reviewer=(int)currentUserId();
-        $docStmt=$conn->prepare("SELECT d.id,d.original_name,d.quality_status,d.review_status,t.team_name,t.status AS team_status,l.league_name FROM tbl_submitted_document d JOIN tbl_team t ON t.id=d.team_id JOIN tbl_league l ON l.id=t.league_id WHERE d.id=? AND l.created_by=? LIMIT 1");
+        $docStmt=$conn->prepare("SELECT d.id,d.original_name,d.quality_status,d.review_status,t.id AS team_id,t.user_id,t.team_name,t.status AS team_status,l.league_name FROM tbl_submitted_document d JOIN tbl_team t ON t.id=d.team_id JOIN tbl_league l ON l.id=t.league_id WHERE d.id=? AND l.created_by=? LIMIT 1");
         $docStmt->bind_param('ii',$documentId,$reviewer); $docStmt->execute();
         $doc=$docStmt->get_result()->fetch_assoc(); $docStmt->close();
         if(!$doc) { echo json_encode(['status'=>404,'msg'=>'Document not found or does not belong to your league.']); exit; }
@@ -1086,6 +1141,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $update->bind_param('ssi',$decision,$remarksValue,$documentId); $update->execute(); $update->close();
             auditLog($conn,'Review Document',"Marked document '{$doc['original_name']}' (ID $documentId) as $decision for team {$doc['team_name']}. ".($remarks!==''?" Remarks: $remarks":''));
             $conn->commit();
+            if ($decision === 'Rejected' && (int)($doc['user_id'] ?? 0) > 0) {
+                try {
+                    $leagueLabel = trim((string)($doc['league_name'] ?? ''));
+                    createNotification($conn, (int)$doc['user_id'], 'team_correction',
+                        'Document Rejected',
+                        'The document "' . $doc['original_name'] . '" for team "' . $doc['team_name'] . '"'
+                            . ($leagueLabel !== '' ? ' in "' . $leagueLabel . '"' : '')
+                            . ' was rejected.' . ($remarks !== '' ? ' Remarks: ' . $remarks : ''),
+                        (int)($doc['team_id'] ?? 0));
+                } catch (Throwable $e) {
+                    error_log('[notification] Document rejection notice failed: ' . $e->getMessage());
+                }
+            }
             echo json_encode(['status'=>201,'msg'=>"Document marked as $decision."]); exit;
         } catch(Throwable $e) {
             $conn->rollback(); error_log('[DOCUMENT REVIEW] '.$e->getMessage());

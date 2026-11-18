@@ -88,142 +88,350 @@ function notificationUnreadCount(mysqli $conn, int $userId): int {
 }
 
 /**
- * Notify organizer when team registers
+ * Notify organizer when a team registers or resubmits a corrected application.
  */
-function notifyTeamRegistration($conn, $leagueId, $teamName, $teamId) {
-    $sql = "SELECT created_by FROM tbl_league WHERE id = ?";
-    $stmt = $conn->prepare($sql);
+function notifyTeamRegistration($conn, $leagueId, $teamName, $teamId, $isResubmission = false) {
+    $stmt = $conn->prepare("SELECT created_by, league_name FROM tbl_league WHERE id = ?");
     $stmt->bind_param('i', $leagueId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    $organizerId = $row['created_by'] ?? null;
+    $organizerId = (int) ($row['created_by'] ?? 0);
+    $leagueName  = trim((string) ($row['league_name'] ?? ''));
 
-    // Fallback: find any organizer (role=1) if created_by is not set
-    if (empty($organizerId)) {
-        $fStmt = $conn->prepare("SELECT id FROM tbl_user WHERE role = 1 LIMIT 1");
-        $fStmt->execute();
-        $fRow = $fStmt->get_result()->fetch_assoc();
-        $fStmt->close();
-        $organizerId = $fRow['id'] ?? null;
+    // Never guess a recipient. Falling back to "the first organizer" used to
+    // drop another organizer's application into the wrong workspace whenever a
+    // legacy league had no created_by.
+    if ($organizerId <= 0) {
+        error_log('[notification] Skipped registration notice for team ' . (int) $teamId . ': league ' . (int) $leagueId . ' has no owner.');
+        return false;
     }
 
-    if ($organizerId) {
-        createNotification($conn, $organizerId, 'team_registration',
-            "New Team Registration",
-            "Team \"$teamName\" has registered for your league. Please review and approve.",
-            $teamId);
-    }
+    $leagueLabel = $leagueName !== '' ? " in \"$leagueName\"" : '';
+    $title = $isResubmission ? 'Team Registration Resubmitted' : 'New Team Registration';
+    $message = $isResubmission
+        ? "Team \"$teamName\" has resubmitted its corrected application$leagueLabel. Please review and approve."
+        : "Team \"$teamName\" has registered$leagueLabel. Please review and approve.";
+
+    return createNotification($conn, $organizerId, 'team_registration', $title, $message, $teamId);
 }
 
 /**
  * Notify team representative when team is approved
  */
 function notifyTeamApproved($conn, $teamId, $teamName) {
-    $sql = "SELECT user_id FROM tbl_team WHERE id = ?";
-    $stmt = $conn->prepare($sql);
+    $stmt = $conn->prepare(
+        "SELECT t.user_id, l.league_name
+           FROM tbl_team t
+           LEFT JOIN tbl_league l ON l.id = t.league_id
+          WHERE t.id = ? LIMIT 1"
+    );
     $stmt->bind_param('i', $teamId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-    
-    if ($row) {
-        createNotification($conn, $row['user_id'], 'team_approved',
-            "Team Approved",
-            "Your team \"$teamName\" has been approved and added to the tournament bracket.",
-            $teamId);
+
+    if ($row && (int) ($row['user_id'] ?? 0) > 0) {
+        $leagueName = trim((string) ($row['league_name'] ?? ''));
+        $message = $leagueName !== ''
+            ? "Your team \"$teamName\" has been approved for \"$leagueName\"."
+            : "Your team \"$teamName\" has been approved and added to the league.";
+        return createNotification($conn, (int) $row['user_id'], 'team_approved',
+            'Team Approved', $message, $teamId);
     }
+
+    return false;
 }
 
 /**
  * Notify team representative when team is rejected
  */
 function notifyTeamRejected($conn, $teamId, $teamName, $reason = '') {
-    $sql = "SELECT user_id FROM tbl_team WHERE id = ?";
-    $stmt = $conn->prepare($sql);
+    $stmt = $conn->prepare(
+        "SELECT t.user_id, l.league_name
+           FROM tbl_team t
+           LEFT JOIN tbl_league l ON l.id = t.league_id
+          WHERE t.id = ? LIMIT 1"
+    );
     $stmt->bind_param('i', $teamId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     $stmt->close();
-    
-    if ($row) {
-        createNotification($conn, $row['user_id'], 'team_rejected',
-            "Team Registration Rejected",
-            "Your team \"$teamName\" registration has been permanently rejected and cannot be resubmitted." . ($reason ? " Reason: $reason" : ""),
+
+    if ($row && (int) ($row['user_id'] ?? 0) > 0) {
+        $leagueName = trim((string) ($row['league_name'] ?? ''));
+        $leagueLabel = $leagueName !== '' ? " in \"$leagueName\"" : '';
+        return createNotification($conn, (int) $row['user_id'], 'team_rejected',
+            'Team Registration Rejected',
+            "The registration for \"$teamName\"$leagueLabel was rejected and cannot be resubmitted."
+                . ($reason ? " Reason: $reason" : ''),
             $teamId);
     }
+
+    return false;
 }
 
 function notifyTeamCorrectionRequested($conn, $teamId, $teamName, $remarks) {
-    $stmt = $conn->prepare("SELECT user_id FROM tbl_team WHERE id=?");
+    $stmt = $conn->prepare(
+        "SELECT t.user_id, l.league_name
+           FROM tbl_team t
+           LEFT JOIN tbl_league l ON l.id = t.league_id
+          WHERE t.id = ? LIMIT 1"
+    );
     $stmt->bind_param('i', $teamId); $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc(); $stmt->close();
-    if ($row) {
-        createNotification($conn, (int)$row['user_id'], 'team_correction', 'Registration Returned for Correction',
-            "Please correct and resubmit the registration for \"$teamName\". Remarks: $remarks", $teamId);
+    if ($row && (int) ($row['user_id'] ?? 0) > 0) {
+        $leagueName = trim((string) ($row['league_name'] ?? ''));
+        $leagueLabel = $leagueName !== '' ? " in \"$leagueName\"" : '';
+        return createNotification($conn, (int) $row['user_id'], 'team_correction', 'Registration Returned for Correction',
+            "Please correct and resubmit the registration for \"$teamName\"$leagueLabel. Remarks: $remarks", $teamId);
     }
+
+    return false;
 }
 
-/** Send one reminder within the final 24 hours and one notice after expiration. */
+/**
+ * Notify the league owner when a representative cancels a pending application.
+ *
+ * The team_cancelled type is already wired into every bell/inbox route map, but
+ * nothing wrote it, so organizers never learned that a pending slot had been
+ * withdrawn. Related_id stays the team id (the organizer URL helper resolves the
+ * league from it).
+ */
+function notifyTeamCancelled($conn, $teamId, $teamName) {
+    $stmt = $conn->prepare(
+        "SELECT l.created_by, l.league_name
+           FROM tbl_team t
+           JOIN tbl_league l ON l.id = t.league_id
+          WHERE t.id = ? LIMIT 1"
+    );
+    if (!$stmt) {
+        error_log('[notification] Cancellation lookup failed for team ' . (int) $teamId . ': ' . ($conn->error ?? 'unknown error'));
+        return false;
+    }
+    $stmt->bind_param('i', $teamId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : null;
+    $stmt->close();
+
+    $ownerId    = (int) ($row['created_by'] ?? 0);
+    $leagueName = trim((string) ($row['league_name'] ?? ''));
+    if ($ownerId <= 0) {
+        error_log('[notification] Skipped cancellation notice for team ' . (int) $teamId . ': the league has no owner.');
+        return false;
+    }
+
+    $leagueLabel = $leagueName !== '' ? " in \"$leagueName\"" : '';
+    return createNotification($conn, $ownerId, 'team_cancelled',
+        'Team Registration Cancelled',
+        "Team \"$teamName\"$leagueLabel has cancelled its registration application.",
+        $teamId);
+}
+
+/**
+ * Send the final-24-hour correction reminder to one representative.
+ *
+ * The expired notice is written by expireTeamCorrectionDeadlines() at the
+ * moment the application actually expires, so it no longer depends on this
+ * representative logging in on the expiry day.
+ */
 function notifyTeamCorrectionDeadlines($conn, $userId) {
-    $stmt = $conn->prepare("SELECT id,team_name,correction_due_at FROM tbl_team WHERE user_id=? AND LOWER(status)='correction requested' AND correction_due_at BETWEEN NOW() AND DATE_ADD(NOW(),INTERVAL 24 HOUR)");
+    $stmt = $conn->prepare(
+        "SELECT t.id, t.team_name, t.correction_due_at, l.league_name
+           FROM tbl_team t
+           LEFT JOIN tbl_league l ON l.id = t.league_id
+          WHERE t.user_id = ?
+            AND LOWER(t.status) = 'correction requested'
+            AND t.correction_due_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)"
+    );
     $stmt->bind_param('i', $userId); $stmt->execute(); $rows = $stmt->get_result();
+    $sent = 0;
     while ($team = $rows->fetch_assoc()) {
         $check=$conn->prepare("SELECT 1 FROM tbl_notification WHERE user_id=? AND type='team_correction_reminder' AND related_id=? AND DATE(created)=CURDATE() LIMIT 1");
         $check->bind_param('ii',$userId,$team['id']); $check->execute(); $exists=(bool)$check->get_result()->fetch_row(); $check->close();
-        if(!$exists) createNotification($conn,$userId,'team_correction_reminder','Correction Deadline Approaching','Correct and resubmit "'.$team['team_name'].'" by '.date('M d, Y h:i A',strtotime($team['correction_due_at'])).'.',$team['id']);
-    }
-    $stmt->close();
-
-    $stmt = $conn->prepare("SELECT id,team_name FROM tbl_team WHERE user_id=? AND LOWER(status)='expired' AND DATE(correction_expired_at)=CURDATE()");
-    $stmt->bind_param('i', $userId); $stmt->execute(); $rows = $stmt->get_result();
-    while ($team = $rows->fetch_assoc()) {
-        $check=$conn->prepare("SELECT 1 FROM tbl_notification WHERE user_id=? AND type='team_correction_expired' AND related_id=? LIMIT 1");
-        $check->bind_param('ii',$userId,$team['id']); $check->execute(); $exists=(bool)$check->get_result()->fetch_row(); $check->close();
-        if(!$exists) createNotification($conn,$userId,'team_correction_expired','Correction Deadline Expired','The correction period for "'.$team['team_name'].'" has expired. The application can no longer be resubmitted.',$team['id']);
-    }
-    $stmt->close();
-}
-
-/**
- * Notify all approved teams in a league about a schedule update
- */
-function notifyScheduleUpdate($conn, $leagueId, $scheduleId, $message) {
-    $stmt = $conn->prepare("SELECT user_id FROM tbl_team WHERE league_id = ? AND status = 'Approved'");
-    $stmt->bind_param('i', $leagueId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
-        createNotification($conn, $row['user_id'], 'schedule_update', 'Schedule Update', $message, $scheduleId);
-    }
-    $stmt->close();
-}
-
-/**
- * Notify only the two teams involved when their match is rescheduled
- */
-function notifyMatchRescheduled($conn, $scheduleId, $teamAId, $teamBId, $newDate, $newTime, $venue = null) {
-    $venueStr = $venue ? " at $venue" : '';
-    $message = "Your match has been rescheduled to " . date('M d, Y', strtotime($newDate)) . " at " . date('h:i A', strtotime($newTime)) . $venueStr . ".";
-
-    foreach ([$teamAId, $teamBId] as $teamId) {
-        $stmt = $conn->prepare("SELECT user_id FROM tbl_team WHERE id = ?");
-        $stmt->bind_param('i', $teamId);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-        if ($row) {
-            createNotification($conn, $row['user_id'], 'schedule_update', 'Match Rescheduled', $message, $scheduleId);
+        $leagueName = trim((string) ($team['league_name'] ?? ''));
+        $leagueLabel = $leagueName !== '' ? " in \"$leagueName\"" : '';
+        if(!$exists && createNotification($conn,$userId,'team_correction_reminder','Correction Deadline Approaching','Correct and resubmit "'.$team['team_name'].'"'.$leagueLabel.' by '.date('M d, Y h:i A',strtotime($team['correction_due_at'])).'.',$team['id'])) {
+            $sent++;
         }
     }
+    $stmt->close();
+
+    return $sent;
+}
+
+/**
+ * Notify the representatives of a set of teams.
+ *
+ * Match-level notifications (publication, reschedule, result, cancellation) must
+ * reach only the representatives of the teams involved. This resolver
+ * deduplicates the team ids (one representative may own both teams), ignores
+ * teams without an owner and writes one row per distinct user, so a league-wide
+ * fan-out can never leak one team's fixture or score to another representative.
+ *
+ * @param int[] $teamIds
+ * @return int Number of notifications written.
+ */
+function notifyTeamRepresentatives($conn, array $teamIds, $type, $title, $message, $relatedId = null) {
+    $teamIds = array_values(array_unique(array_filter(
+        array_map('intval', $teamIds),
+        static function ($teamId) {
+            return $teamId > 0;
+        }
+    )));
+
+    if (empty($teamIds)) {
+        return 0;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($teamIds), '?'));
+    $stmt = $conn->prepare(
+        "SELECT DISTINCT user_id
+           FROM tbl_team
+          WHERE id IN ($placeholders)
+            AND user_id IS NOT NULL
+            AND user_id > 0"
+    );
+    if (!$stmt) {
+        error_log('[notification] Team-recipient lookup failed: ' . ($conn->error ?? 'unknown error'));
+        return 0;
+    }
+
+    $types = str_repeat('i', count($teamIds));
+    $stmt->bind_param($types, ...$teamIds);
+    if (!$stmt->execute()) {
+        error_log('[notification] Team-recipient lookup failed: ' . $stmt->error);
+        $stmt->close();
+        return 0;
+    }
+
+    $result = $stmt->get_result();
+    if (!$result) {
+        $stmt->close();
+        return 0;
+    }
+
+    $sent = 0;
+    while ($row = $result->fetch_assoc()) {
+        $recipientId = (int) ($row['user_id'] ?? 0);
+        if ($recipientId > 0 && createNotification($conn, $recipientId, $type, $title, $message, $relatedId)) {
+            $sent++;
+        }
+    }
+    $stmt->close();
+
+    return $sent;
+}
+
+/**
+ * Notify only the two teams involved when their match is published.
+ *
+ * This used to select every approved team in the league, so each representative
+ * received "Match published: Team A vs Team B" for fixtures that were not
+ * theirs. The schedule id is validated against the league and the recipients are
+ * resolved from team_a/team_b only.
+ */
+function notifyScheduleUpdate($conn, $leagueId, $scheduleId, $message) {
+    $stmt = $conn->prepare(
+        "SELECT team_a, team_b
+           FROM tbl_schedule
+          WHERE id = ? AND league_id = ?
+          LIMIT 1"
+    );
+    if (!$stmt) {
+        error_log('[notification] Schedule lookup failed for match ' . (int) $scheduleId . ': ' . ($conn->error ?? 'unknown error'));
+        return 0;
+    }
+    $stmt->bind_param('ii', $scheduleId, $leagueId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $match = $result ? $result->fetch_assoc() : null;
+    $stmt->close();
+
+    if (!$match) {
+        return 0;
+    }
+
+    return notifyTeamRepresentatives(
+        $conn,
+        [(int) $match['team_a'], (int) $match['team_b']],
+        'schedule_update',
+        'Schedule Update',
+        $message,
+        $scheduleId
+    );
+}
+
+/**
+ * Notify the two teams and the assigned Committee when a result is reopened.
+ *
+ * Reopening happens when a protest is upheld. The Committee has to enter the
+ * corrected line and both teams must know the published result is under review.
+ */
+function notifyResultReopened($conn, $scheduleId) {
+    $stmt = $conn->prepare(
+        "SELECT s.team_a, s.team_b, s.committee_user_id, s.date, s.time,
+                l.league_name,
+                ta.team_name AS team_a_name, tb.team_name AS team_b_name
+           FROM tbl_schedule s
+           JOIN tbl_league l ON l.id = s.league_id
+           LEFT JOIN tbl_team ta ON ta.id = s.team_a
+           LEFT JOIN tbl_team tb ON tb.id = s.team_b
+          WHERE s.id = ?
+          LIMIT 1"
+    );
+    if (!$stmt) {
+        error_log('[notification] Result-reopen lookup failed for match ' . (int) $scheduleId . ': ' . ($conn->error ?? 'unknown error'));
+        return 0;
+    }
+    $stmt->bind_param('i', $scheduleId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $match = $result ? $result->fetch_assoc() : null;
+    $stmt->close();
+
+    if (!$match) {
+        return 0;
+    }
+
+    $leagueName = trim((string) ($match['league_name'] ?? ''));
+    $teamAName  = trim((string) ($match['team_a_name'] ?? 'Team A'));
+    $teamBName  = trim((string) ($match['team_b_name'] ?? 'Team B'));
+    $dateLabel  = !empty($match['date']) ? date('M d, Y', strtotime((string) $match['date'])) : '';
+    $context = ($leagueName !== '' ? "\"$leagueName\": " : '')
+        . "$teamAName vs $teamBName"
+        . ($dateLabel !== '' ? " on $dateLabel" : '');
+
+    $sent = notifyTeamRepresentatives(
+        $conn,
+        [(int) $match['team_a'], (int) $match['team_b']],
+        'match_result',
+        'Result Under Review',
+        "The official result for $context has been reopened for correction. It will be updated once the Committee submits the corrected result.",
+        $scheduleId
+    );
+
+    $committeeId = (int) ($match['committee_user_id'] ?? 0);
+    if ($committeeId > 0) {
+        $notified = createNotification($conn, $committeeId, 'committee_assignment',
+            'Result Reopened',
+            "The result for $context was reopened. Submit the corrected result.",
+            $scheduleId);
+        if ($notified) {
+            $sent++;
+        }
+    }
+
+    return $sent;
 }
 
 /**
  * Notify all approved teams in a league when the schedule is first released
  */
 function notifyScheduleReleased($conn, $leagueId, $leagueName) {
-    $stmt = $conn->prepare("SELECT user_id FROM tbl_team WHERE league_id = ? AND status = 'Approved'");
+    $stmt = $conn->prepare("SELECT DISTINCT user_id FROM tbl_team WHERE league_id = ? AND status = 'Approved' AND user_id IS NOT NULL AND user_id > 0");
     $stmt->bind_param('i', $leagueId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -239,19 +447,38 @@ function notifyScheduleReleased($conn, $leagueId, $leagueName) {
 /**
  * Notify all existing team representatives about a new league opening
  */
-function notifyNewLeague($conn, $leagueId, $leagueName, $regisEnd) {
-    $deadline = date('M d, Y', strtotime($regisEnd));
-    // Notify all TR users (role = 2)
-    $stmt = $conn->prepare("SELECT id FROM tbl_user WHERE role = 2");
+function notifyNewLeague($conn, $leagueId, $leagueName, $regisEnd, $regisStart = null) {
+    $endTs   = $regisEnd ? strtotime($regisEnd) : false;
+    $startTs = $regisStart ? strtotime($regisStart) : false;
+    $deadline = $endTs ? date('M d, Y', $endTs) : 'the published deadline';
+    $todayTs  = strtotime(date('Y-m-d'));
+
+    // Publishing a league does not require registration to have started yet.
+    // Say when it opens instead of claiming it is open now.
+    if ($startTs && $todayTs && $startTs > $todayTs) {
+        $timing = 'Registration opens on ' . date('M d, Y', $startTs) . " and closes on $deadline.";
+    } elseif ($endTs) {
+        $timing = "Registration is open now until $deadline.";
+    } else {
+        $timing = 'Registration is open now.';
+    }
+
+    // Only active team representatives receive the broadcast.
+    $stmt = $conn->prepare("SELECT id FROM tbl_user WHERE role = 2 AND stat = '1'");
     $stmt->execute();
     $result = $stmt->get_result();
+    $sent = 0;
     while ($row = $result->fetch_assoc()) {
-        createNotification($conn, $row['id'], 'announcement',
+        if (createNotification($conn, $row['id'], 'announcement',
             'New League Available',
-            "A new league \"$leagueName\" is now open for registration. Deadline: $deadline.",
-            $leagueId);
+            "A new league \"$leagueName\" is available. $timing",
+            $leagueId)) {
+            $sent++;
+        }
     }
     $stmt->close();
+
+    return $sent;
 }
 
 /**
@@ -260,23 +487,43 @@ function notifyNewLeague($conn, $leagueId, $leagueName, $regisEnd) {
  */
 function notifyRegistrationClosingSoon($conn, $daysAhead = 3) {
     $targetDate = date('Y-m-d', strtotime("+$daysAhead days"));
-    // Find leagues whose regis_end is exactly $daysAhead days from now
-    $stmt = $conn->prepare("SELECT id, league_name, regis_end FROM tbl_league WHERE DATE(regis_end) = ?");
+    // Only leagues a representative can actually join right now: published,
+    // not archived, registration explicitly open, already started, and with a
+    // free slot. Draft or manually-closed leagues used to reach reps here.
+    $stmt = $conn->prepare(
+        "SELECT l.id, l.league_name, l.regis_end
+           FROM tbl_league l
+          WHERE DATE(l.regis_end) = ?
+            AND l.publication_status = 'Published'
+            AND (l.is_archived = 0 OR l.is_archived IS NULL)
+            AND l.registration_window_open = 1
+            AND l.regis_start <= CURDATE()
+            AND (l.max_team IS NULL OR l.max_team <= 0
+                 OR (SELECT COUNT(*) FROM tbl_team ta
+                      WHERE ta.league_id = l.id AND LOWER(ta.status) = 'approved') < l.max_team)"
+    );
     $stmt->bind_param('s', $targetDate);
     $stmt->execute();
     $leagues = $stmt->get_result();
     $stmt->close();
 
+    $sent = 0;
     while ($league = $leagues->fetch_assoc()) {
         $deadline = date('M d, Y', strtotime($league['regis_end']));
-        // Notify all TR users who have NOT yet registered in this league
-        // NOT EXISTS instead of NOT IN: tbl_team.user_id is nullable (migration
-        // 026), and one NULL inside a NOT IN sub-query makes the whole predicate
-        // UNKNOWN — which silently suppressed every "closing soon" reminder.
+        // Notify active TR users without an active application in this league.
+        // Rejected/cancelled/expired rows do not count as "already registered":
+        // those representatives are free to apply again. NOT EXISTS instead of
+        // NOT IN keeps nullable user ids safe (migration 026).
         $uStmt = $conn->prepare(
             "SELECT u.id FROM tbl_user u
               WHERE u.role = 2
-                AND NOT EXISTS (SELECT 1 FROM tbl_team t WHERE t.league_id = ? AND t.user_id = u.id)"
+                AND u.stat = '1'
+                AND NOT EXISTS (
+                    SELECT 1 FROM tbl_team t
+                     WHERE t.league_id = ?
+                       AND t.user_id = u.id
+                       AND LOWER(t.status) NOT IN ('rejected', 'cancelled', 'canceled', 'expired')
+                )"
         );
         $uStmt->bind_param('i', $league['id']);
         $uStmt->execute();
@@ -292,14 +539,16 @@ function notifyRegistrationClosingSoon($conn, $daysAhead = 3) {
             $chk->execute();
             $exists = $chk->get_result()->fetch_assoc();
             $chk->close();
-            if (!$exists) {
-                createNotification($conn, $user['id'], 'registration_closing',
-                    'Registration Closing Soon',
-                    "Registration for \"" . $league['league_name'] . "\" closes on $deadline. Register your team now!",
-                    $league['id']);
+            if (!$exists && createNotification($conn, $user['id'], 'registration_closing',
+                'Registration Closing Soon',
+                "Registration for \"" . $league['league_name'] . "\" closes on $deadline. Register your team now!",
+                $league['id'])) {
+                $sent++;
             }
         }
     }
+
+    return $sent;
 }
 
 /**
@@ -311,24 +560,35 @@ function notifyUpcomingMatchToday($conn) {
     // Only matches that have not started yet: the reminder is fired from the
     // dashboard, so without the time guard a representative signing in in the
     // evening was told "You have a match today at 8:00 AM" long after it ended.
+    // published_at / archived guards keep drafts and voided fixtures out.
     $stmt = $conn->prepare(
         "SELECT s.id, s.team_a, s.team_b, s.time, s.venue, s.league_id,
+                l.league_name,
                 ta.team_name AS team_a_name, tb.team_name AS team_b_name
-         FROM tbl_schedule s
-         JOIN tbl_team ta ON ta.id = s.team_a
-         JOIN tbl_team tb ON tb.id = s.team_b
-         WHERE DATE(s.date) = ? AND s.status = 'Scheduled'
-           AND (s.date > CURDATE() OR s.time >= CURTIME())"
+           FROM tbl_schedule s
+           JOIN tbl_team ta ON ta.id = s.team_a
+           JOIN tbl_team tb ON tb.id = s.team_b
+           JOIN tbl_league l ON l.id = s.league_id
+          WHERE DATE(s.date) = ?
+            AND LOWER(s.status) IN ('scheduled', 'upcoming')
+            AND s.published_at IS NOT NULL
+            AND (s.is_archived = 0 OR s.is_archived IS NULL)
+            AND (l.is_archived = 0 OR l.is_archived IS NULL)
+            AND (s.date > CURDATE() OR s.time >= CURTIME())"
     );
     $stmt->bind_param('s', $today);
     $stmt->execute();
     $matches = $stmt->get_result();
     $stmt->close();
 
+    $sent = 0;
     while ($match = $matches->fetch_assoc()) {
         $time = date('h:i A', strtotime($match['time']));
         $venueStr = $match['venue'] ? " at " . $match['venue'] : '';
-        $message = "You have a match today: " . $match['team_a_name'] . " vs " . $match['team_b_name'] . " at $time" . $venueStr . ".";
+        $leagueLabel = trim((string) ($match['league_name'] ?? ''));
+        $message = 'You have a match today'
+            . ($leagueLabel !== '' ? " in \"$leagueLabel\"" : '')
+            . ': ' . $match['team_a_name'] . ' vs ' . $match['team_b_name'] . " at $time" . $venueStr . '.';
 
         foreach ([$match['team_a'], $match['team_b']] as $teamId) {
             $uStmt = $conn->prepare("SELECT user_id FROM tbl_team WHERE id = ?");
@@ -336,28 +596,148 @@ function notifyUpcomingMatchToday($conn) {
             $uStmt->execute();
             $uRow = $uStmt->get_result()->fetch_assoc();
             $uStmt->close();
-            if (!$uRow) continue;
+            $recipientId = (int) ($uRow['user_id'] ?? 0);
+            if ($recipientId <= 0) continue;
 
             // Avoid duplicate today reminders
             $chk = $conn->prepare(
                 "SELECT id FROM tbl_notification WHERE user_id = ? AND type = 'upcoming_match' AND related_id = ? AND DATE(created) = CURDATE()"
             );
-            $chk->bind_param('ii', $uRow['user_id'], $match['id']);
+            $chk->bind_param('ii', $recipientId, $match['id']);
             $chk->execute();
             $exists = $chk->get_result()->fetch_assoc();
             $chk->close();
-            if (!$exists) {
-                createNotification($conn, $uRow['user_id'], 'upcoming_match', 'Match Today', $message, $match['id']);
+            if (!$exists && createNotification($conn, $recipientId, 'upcoming_match', 'Match Today', $message, $match['id'])) {
+                $sent++;
             }
         }
     }
+
+    return $sent;
+}
+
+/**
+ * Notify each Committee member about the matches they officiate today.
+ */
+function notifyCommitteeUpcomingMatchToday($conn) {
+    $today = date('Y-m-d');
+    $stmt = $conn->prepare(
+        "SELECT s.id, s.committee_user_id, s.time, s.venue,
+                l.league_name,
+                ta.team_name AS team_a_name, tb.team_name AS team_b_name
+           FROM tbl_schedule s
+           JOIN tbl_league l ON l.id = s.league_id
+           JOIN tbl_team ta ON ta.id = s.team_a
+           JOIN tbl_team tb ON tb.id = s.team_b
+          WHERE DATE(s.date) = ?
+            AND s.committee_user_id IS NOT NULL
+            AND s.committee_user_id > 0
+            AND s.published_at IS NOT NULL
+            AND LOWER(s.status) IN ('scheduled', 'upcoming')
+            AND (s.is_archived = 0 OR s.is_archived IS NULL)
+            AND (l.is_archived = 0 OR l.is_archived IS NULL)
+            AND (s.date > CURDATE() OR s.time >= CURTIME())"
+    );
+    $stmt->bind_param('s', $today);
+    $stmt->execute();
+    $matches = $stmt->get_result();
+    $stmt->close();
+
+    $sent = 0;
+    while ($match = $matches->fetch_assoc()) {
+        $committeeId = (int) ($match['committee_user_id'] ?? 0);
+        if ($committeeId <= 0) {
+            continue;
+        }
+        $time = date('h:i A', strtotime((string) $match['time']));
+        $venueStr = $match['venue'] ? ' at ' . $match['venue'] : '';
+        $leagueLabel = trim((string) ($match['league_name'] ?? ''));
+        $message = 'You are officiating today'
+            . ($leagueLabel !== '' ? " in \"$leagueLabel\"" : '')
+            . ': ' . $match['team_a_name'] . ' vs ' . $match['team_b_name'] . " at $time" . $venueStr . '.';
+
+        $chk = $conn->prepare(
+            "SELECT id FROM tbl_notification WHERE user_id = ? AND type = 'upcoming_match' AND related_id = ? AND DATE(created) = CURDATE()"
+        );
+        $chk->bind_param('ii', $committeeId, $match['id']);
+        $chk->execute();
+        $exists = $chk->get_result()->fetch_assoc();
+        $chk->close();
+        if (!$exists && createNotification($conn, $committeeId, 'upcoming_match', 'Match Today', $message, $match['id'])) {
+            $sent++;
+        }
+    }
+
+    return $sent;
+}
+
+/**
+ * Remind each Committee member about assigned matches whose result is overdue.
+ *
+ * A match is overdue when its scheduled date/time has passed by at least three
+ * hours, it is still published/not completed/cancelled, and no result was
+ * submitted. The grace period avoids asking for a result while the match is
+ * still being played; the seven-day window keeps an old backlog from generating
+ * an endless daily reminder.
+ */
+function notifyCommitteePendingResults($conn) {
+    $stmt = $conn->prepare(
+        "SELECT s.id, s.committee_user_id, s.date, s.time, s.venue,
+                l.league_name,
+                ta.team_name AS team_a_name, tb.team_name AS team_b_name
+           FROM tbl_schedule s
+           JOIN tbl_league l ON l.id = s.league_id
+           JOIN tbl_team ta ON ta.id = s.team_a
+           JOIN tbl_team tb ON tb.id = s.team_b
+          WHERE s.committee_user_id IS NOT NULL
+            AND s.committee_user_id > 0
+            AND s.published_at IS NOT NULL
+            AND (s.is_archived = 0 OR s.is_archived IS NULL)
+            AND (l.is_archived = 0 OR l.is_archived IS NULL)
+            AND s.result_submitted_by IS NULL
+            AND LOWER(s.status) NOT IN ('completed', 'cancelled', 'canceled', 'postponed')
+            AND CONCAT(s.date, ' ', s.time) < DATE_SUB(NOW(), INTERVAL 3 HOUR)
+            AND s.date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)"
+    );
+    $stmt->execute();
+    $matches = $stmt->get_result();
+    $stmt->close();
+
+    $sent = 0;
+    while ($match = $matches->fetch_assoc()) {
+        $committeeId = (int) ($match['committee_user_id'] ?? 0);
+        if ($committeeId <= 0) {
+            continue;
+        }
+        $dateLabel = !empty($match['date']) ? date('M d, Y', strtotime((string) $match['date'])) : 'the scheduled date';
+        $timeLabel = !empty($match['time']) ? date('h:i A', strtotime((string) $match['time'])) : '';
+        $leagueLabel = trim((string) ($match['league_name'] ?? ''));
+        $message = 'The result for '
+            . ($leagueLabel !== '' ? "\"$leagueLabel\": " : '')
+            . $match['team_a_name'] . ' vs ' . $match['team_b_name']
+            . " on $dateLabel" . ($timeLabel !== '' ? " at $timeLabel" : '')
+            . ' has not been submitted. Please enter it.';
+
+        $chk = $conn->prepare(
+            "SELECT id FROM tbl_notification WHERE user_id = ? AND type = 'result_reminder' AND related_id = ? AND DATE(created) = CURDATE()"
+        );
+        $chk->bind_param('ii', $committeeId, $match['id']);
+        $chk->execute();
+        $exists = $chk->get_result()->fetch_assoc();
+        $chk->close();
+        if (!$exists && createNotification($conn, $committeeId, 'result_reminder', 'Result Needed', $message, $match['id'])) {
+            $sent++;
+        }
+    }
+
+    return $sent;
 }
 
 /**
  * Notify all teams in a league about announcement
  */
 function notifyAnnouncement($conn, $leagueId, $announcementId, $title, $message) {
-    $stmt = $conn->prepare("SELECT user_id FROM tbl_team WHERE league_id = ? AND status = 'Approved'");
+    $stmt = $conn->prepare("SELECT DISTINCT user_id FROM tbl_team WHERE league_id = ? AND status = 'Approved' AND user_id IS NOT NULL AND user_id > 0");
     $stmt->bind_param('i', $leagueId);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -474,13 +854,14 @@ function notificationLeagueId(mysqli $conn, string $type, int $relatedId, string
 function organizerNotificationUrl(mysqli $conn, string $type, int $relatedId): string {
     $pages = [
         'team_registration'        => 'pending_teams.php',
-        'team_cancelled'           => 'pending_teams.php',
+        'team_cancelled'           => 'league_info.php',
         'team_correction'          => 'pending_teams.php',
         'team_correction_reminder' => 'pending_teams.php',
-        'team_correction_expired'  => 'pending_teams.php',
+        'team_correction_expired'  => 'league_info.php',
         'team_approved'            => 'league_info.php',
         'team_rejected'            => 'league_info.php',
         'announcement'             => 'league_info.php',
+        'league_full'              => 'league_info.php',
         'schedule_updated'         => 'schedule.php',
         'schedule_update'          => 'schedule.php',
         'upcoming_match'           => 'schedule.php',
@@ -513,17 +894,37 @@ function teamRepNotificationUrl(mysqli $conn, string $type, int $relatedId, stri
         return $relatedId > 0 ? 'view_team.php?id=' . $relatedId : 'league.php';
     }
 
-    $leagueTypes = [
-        'announcement', 'registration_closing', 'schedule_update', 'schedule_updated',
-        'upcoming_match', 'committee_assignment', 'match_result', 'round_complete',
-        'group_stage_complete', 'tournament_complete',
+    // Fixture notices open the public schedule board, score notices the
+    // standings table. Both render the TR portal chrome for role 2. The path is
+    // relative to app/tr/ pages; root pages prepend their routeBase (app/tr/),
+    // which resolves to the same files.
+    $scheduleTypes = [
+        'schedule_update', 'schedule_updated', 'upcoming_match', 'committee_assignment',
     ];
-    if (!in_array($type, $leagueTypes, true)) {
+    $resultTypes = [
+        'match_result', 'round_complete', 'group_stage_complete', 'tournament_complete',
+    ];
+    $leagueInfoTypes = ['announcement', 'registration_closing'];
+
+    if (!in_array($type, $scheduleTypes, true)
+        && !in_array($type, $resultTypes, true)
+        && !in_array($type, $leagueInfoTypes, true)) {
         return 'dashboard.php';
     }
 
     $leagueId = notificationLeagueId($conn, $type, $relatedId, $title);
-    return $leagueId > 0 ? '../../team_information.php?id=' . $leagueId : 'browse_leagues.php';
+    if ($leagueId <= 0) {
+        return 'browse_leagues.php';
+    }
+
+    if (in_array($type, $scheduleTypes, true)) {
+        return '../../schedule.php?id=' . $leagueId;
+    }
+    if (in_array($type, $resultTypes, true)) {
+        return '../../standing.php?id=' . $leagueId;
+    }
+
+    return '../../team_information.php?id=' . $leagueId;
 }
 /**
  * Build the committee page a notification should open.
@@ -539,7 +940,7 @@ function committeeNotificationUrl(string $type, int $relatedId): string {
 
     $matchTypes = [
         'committee_assignment', 'schedule_updated', 'schedule_update',
-        'upcoming_match', 'match_result',
+        'upcoming_match', 'match_result', 'result_reminder',
     ];
 
     return (in_array($type, $matchTypes, true) && $relatedId > 0)

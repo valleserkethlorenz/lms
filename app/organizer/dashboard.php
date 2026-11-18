@@ -225,6 +225,7 @@ $organizerId = (int)$userId;
         'tournament_complete'      => ['bi-trophy-fill', 'schedule'],
         'registration_closing'     => ['bi-clock-fill', 'announcement'],
         'announcement'             => ['bi-megaphone-fill', 'announcement'],
+        'league_full'              => ['bi-people-fill', 'team'],
     ];
 
     // Relative timestamp — same thresholds as relativeTime() in the bell popover.

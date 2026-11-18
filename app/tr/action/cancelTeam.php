@@ -11,6 +11,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
 require_once __DIR__ . '/../../../config/dbconnect.php';
 require_once __DIR__ . '/../../../config/auth_guard.php';
+require_once __DIR__ . '/../../../includes/notificationHelper.php';
 requireJsonRole([2]);
 requireActiveAccount($conn, true);
 /** @var mysqli $conn */
@@ -41,7 +42,7 @@ if (!$teamId) {
 }
 
 // Verify team belongs to logged-in user
-$verify = "SELECT id, status FROM tbl_team WHERE id = ? AND user_id = ?";
+$verify = "SELECT id, status, team_name FROM tbl_team WHERE id = ? AND user_id = ?";
 $stmt = mysqli_prepare($conn, $verify);
 
 if (!$stmt) {
@@ -89,6 +90,13 @@ mysqli_stmt_bind_param($ustmt, 'i', $teamId);
 
 if (mysqli_stmt_execute($ustmt)) {
     mysqli_stmt_close($ustmt);
+    // Best effort: the cancellation is already persisted, so a failed lookup
+    // must not turn a successful withdrawal into an error response.
+    try {
+        notifyTeamCancelled($conn, $teamId, (string) ($team['team_name'] ?? ''));
+    } catch (Throwable $e) {
+        error_log('[notification] Team cancellation notice failed for team ' . $teamId . ': ' . $e->getMessage());
+    }
     http_response_code(200);
     echo json_encode(['status' => 200, 'msg' => 'Registration cancelled successfully']);
 } else {

@@ -219,21 +219,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submitResult'])) {
         ? ($aScore . ' - ' . $bScore . ' (' . formatMatchSets(array_map(fn($r) => ['a_points' => $r[0], 'b_points' => $r[1]], $setRows)) . ')')
         : ($aScore . ' - ' . $bScore);
     auditLog($conn, 'Submit Result', "Committee submitted $winType result for match ID $sid: $resultSummary (winner=$winnerValue, A+$penaltyA, B+$penaltyB)");
-    $teamUsers = $conn->prepare("SELECT DISTINCT user_id FROM tbl_team WHERE id IN (?,?)");
-    $teamUsers->bind_param('ii', $matchRow['team_a'], $matchRow['team_b']);
-    $teamUsers->execute();
-    $userRows = $teamUsers->get_result();
-    while ($teamUser = $userRows->fetch_assoc()) {
-        createNotification($conn, (int)$teamUser['user_id'], 'match_result', 'Match Result Published', "Official result: $aScore - $bScore", $sid);
+    // Only the two teams in this match hear about its result. The message carries
+    // the league and both team names so a representative can tell which of their
+    // fixtures the score belongs to.
+    $resultInfoStmt = $conn->prepare(
+        "SELECT l.league_name, ta.team_name AS team_a_name, tb.team_name AS team_b_name
+           FROM tbl_schedule s
+           JOIN tbl_league l ON l.id = s.league_id
+           LEFT JOIN tbl_team ta ON ta.id = s.team_a
+           LEFT JOIN tbl_team tb ON tb.id = s.team_b
+          WHERE s.id = ? LIMIT 1"
+    );
+    $resultInfo = [];
+    if ($resultInfoStmt) {
+        $resultInfoStmt->bind_param('i', $sid);
+        $resultInfoStmt->execute();
+        $resultRows = $resultInfoStmt->get_result();
+        $resultInfo = $resultRows ? $resultRows->fetch_assoc() : [];
+        if (!is_array($resultInfo)) {
+            $resultInfo = [];
+        }
+        $resultInfoStmt->close();
     }
-    $teamUsers->close();
+
+    $leagueLabel  = trim((string) ($resultInfo['league_name'] ?? ''));
+    $teamALabel   = trim((string) ($resultInfo['team_a_name'] ?? 'Team A'));
+    $teamBLabel   = trim((string) ($resultInfo['team_b_name'] ?? 'Team B'));
+    $resultTypeLabel = $winType !== 'Regular' ? " [$winType]" : '';
+    $teamsMessage = 'Official result' . ($leagueLabel !== '' ? " in \"$leagueLabel\"" : '')
+        . ": $teamALabel $resultSummary $teamBLabel$resultTypeLabel.";
+    try {
+        notifyTeamRepresentatives($conn, [$teamAId, $teamBId], 'match_result', 'Match Result Published', $teamsMessage, $sid);
+    } catch (Throwable $e) {
+        error_log('[notification] Match result notice failed for schedule ' . $sid . ': ' . $e->getMessage());
+    }
+
     $organizerStmt = $conn->prepare("SELECT created_by FROM tbl_league WHERE id=?");
     $organizerStmt->bind_param('i', $matchRow['league_id']);
     $organizerStmt->execute();
     $organizer = $organizerStmt->get_result()->fetch_assoc();
     $organizerStmt->close();
     if (!empty($organizer['created_by'])) {
-        createNotification($conn, (int)$organizer['created_by'], 'match_result', 'Match Result Published', "Committee published result $aScore - $bScore for match #$sid.", $sid);
+        $winnerLabel = '';
+        if ($winType === 'DoubleForfeit') {
+            $winnerLabel = ' — double forfeit';
+        } elseif ($winnerValue === $teamAId) {
+            $winnerLabel = " — winner: $teamALabel";
+        } elseif ($winnerValue === $teamBId) {
+            $winnerLabel = " — winner: $teamBLabel";
+        }
+        if ($winType !== 'Regular' && $winType !== 'DoubleForfeit') {
+            $winnerLabel .= " [$winType]";
+        }
+        createNotification($conn, (int)$organizer['created_by'], 'match_result', 'Match Result Published',
+            "Committee published result: $teamALabel $resultSummary $teamBLabel"
+                . ($leagueLabel !== '' ? " in \"$leagueLabel\"" : '')
+                . " (match #$sid)$winnerLabel.",
+            $sid);
     }
 
     // Auto-progress the tournament based on format

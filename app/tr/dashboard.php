@@ -72,9 +72,10 @@ if ($userType == 2) {
     require_once __DIR__ . '/../../includes/notificationHelper.php';
     expireTeamCorrectionDeadlines($conn);
 
-    // Run daily notifications once per day per user (stored in session). They
-    // are a convenience, so a database hiccup while building them must never
-    // stop the representative's dashboard from rendering.
+    // Fallback for installations without a scheduled job: the same work is done
+    // once a day by scripts/run_daily_notifications.php. The per-notification
+    // dedupe checks make the two paths safe to overlap. They are a convenience,
+    // so a database hiccup must never stop the dashboard from rendering.
     $todayKey = 'daily_notif_' . date('Y-m-d');
     if (empty($_SESSION[$todayKey])) {
         try {

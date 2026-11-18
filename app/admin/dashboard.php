@@ -5,9 +5,7 @@ require_once __DIR__ . '/../../config/auth_guard.php';
 requireRole([3]);
 requireActiveAccount($conn);
 
-$userId   = currentUserId();
-$full     = currentUserName();
-$userType = currentRole();
+$full = currentUserName();
 
 // ── Workspace counts ─────────────────────────────────────────────────────
 $total_users    = (int) ($conn->query("SELECT COUNT(*) AS c FROM tbl_user WHERE role != '3'")->fetch_assoc()['c'] ?? 0);
@@ -16,31 +14,6 @@ $total_comm     = (int) ($conn->query("SELECT COUNT(*) AS c FROM tbl_user WHERE 
 $total_tr       = (int) ($conn->query("SELECT COUNT(*) AS c FROM tbl_user WHERE role='2'")->fetch_assoc()['c'] ?? 0);
 $total_leagues  = (int) ($conn->query("SELECT COUNT(*) AS c FROM tbl_league WHERE is_archived=0 OR is_archived IS NULL")->fetch_assoc()['c'] ?? 0);
 $total_archived = (int) ($conn->query("SELECT COUNT(*) AS c FROM tbl_league WHERE is_archived=1")->fetch_assoc()['c'] ?? 0);
-
-// ── Inbox: this admin's latest notifications (same source as the bell) ────
-$adminNotifs = [];
-$unreadCount = 0;
-$notifStmt = $conn->prepare(
-    "SELECT id, type, title, message, is_read, created
-       FROM tbl_notification
-      WHERE user_id = ?
-      ORDER BY created DESC
-      LIMIT 5"
-);
-if ($notifStmt) {
-    $notifStmt->bind_param('i', $userId);
-    $notifStmt->execute();
-    $notifRes = $notifStmt->get_result();
-    while ($notifRow = $notifRes->fetch_assoc()) $adminNotifs[] = $notifRow;
-    $notifStmt->close();
-}
-$countStmt = $conn->prepare("SELECT COUNT(*) AS c FROM tbl_notification WHERE user_id = ? AND is_read = 0");
-if ($countStmt) {
-    $countStmt->bind_param('i', $userId);
-    $countStmt->execute();
-    $unreadCount = (int) ($countStmt->get_result()->fetch_assoc()['c'] ?? 0);
-    $countStmt->close();
-}
 
 // ── Recent accounts (latest 5, non-admin) ────────────────────────────────
 $recentUsers = [];
@@ -64,28 +37,7 @@ if ($hasLogTable) {
 }
 
 // ── Presentation helpers ─────────────────────────────────────────────────
-// Icon + accent tone per notification type (mirrors the bell popover).
-$notifIcons = [
-    'team_registration'        => ['bi-people-fill', 'team'],
-    'team_cancelled'           => ['bi-person-x-fill', 'team'],
-    'team_approved'            => ['bi-check-circle-fill', 'team'],
-    'team_rejected'            => ['bi-x-circle-fill', 'team'],
-    'team_correction'          => ['bi-pencil-square', 'team'],
-    'team_correction_reminder' => ['bi-alarm', 'team'],
-    'team_correction_expired'  => ['bi-hourglass-bottom', 'team'],
-    'schedule_updated'         => ['bi-calendar-check-fill', 'schedule'],
-    'schedule_update'          => ['bi-calendar-check-fill', 'schedule'],
-    'upcoming_match'           => ['bi-stopwatch-fill', 'schedule'],
-    'committee_assignment'     => ['bi-person-badge-fill', 'schedule'],
-    'match_result'             => ['bi-trophy-fill', 'schedule'],
-    'round_complete'           => ['bi-diagram-3-fill', 'schedule'],
-    'group_stage_complete'     => ['bi-diagram-3-fill', 'schedule'],
-    'tournament_complete'      => ['bi-trophy-fill', 'schedule'],
-    'registration_closing'     => ['bi-clock-fill', 'announcement'],
-    'announcement'             => ['bi-megaphone-fill', 'announcement'],
-];
-
-// Relative timestamp — same thresholds as the bell popover.
+// Relative timestamp — same thresholds as the role dashboards.
 $relTime = function ($created): string {
     $ts = strtotime((string) $created);
     if (!$ts) return '';
@@ -189,7 +141,7 @@ include 'includes/header.php';
                 <?php endforeach; ?>
             </div>
 
-            <!-- ── Inbox + accounts | audit trail ────────────────── -->
+            <!-- ── Accounts | audit trail ─────────────────────────── -->
             <div class="ad-grid">
                 <div class="ad-col">
 
@@ -312,60 +264,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         requestAnimationFrame(step);
     });
-
-    // ── Inbox: mark notifications read through the shared endpoint ──────
-    var actionUrl = '../../includes/notificationAction.php';
-    var csrfToken = <?= json_encode(csrfToken()) ?>;
-    var pill = document.querySelector('.ad-notif-tools .ad-panel-count');
-    var markAllBtn = document.getElementById('notifMarkAll');
-
-    function post(payload) {
-        payload.csrf_token = csrfToken;
-        return fetch(actionUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-            body: new URLSearchParams(payload).toString(),
-            credentials: 'same-origin',
-            keepalive: true
-        }).then(function (res) { return res.json(); }).catch(function () { return null; });
-    }
-
-    function stepPill() {
-        if (!pill) return;
-        var left = parseInt(pill.textContent, 10);
-        if (isNaN(left)) return;
-        left = Math.max(0, left - 1);
-        pill.textContent = left > 0 ? (left > 99 ? '99+' : String(left)) + ' unread' : 'All caught up';
-    }
-
-    document.querySelectorAll('.ad-notif-mark').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var row = btn.closest('.ad-notif');
-            var id = btn.getAttribute('data-mark-read');
-            btn.remove();
-            if (row) row.classList.remove('is-unread');
-            stepPill();
-            if (id) post({ action: 'mark_read', notification_id: id });
-        });
-    });
-
-    if (markAllBtn) {
-        markAllBtn.addEventListener('click', function () {
-            markAllBtn.disabled = true;
-            post({ action: 'mark_all_read' }).then(function (res) {
-                if (!res || res.status !== 200) {
-                    markAllBtn.disabled = false;
-                    return;
-                }
-                document.querySelectorAll('.ad-notif.is-unread').forEach(function (row) {
-                    row.classList.remove('is-unread');
-                });
-                document.querySelectorAll('.ad-notif-mark').forEach(function (btn) { btn.remove(); });
-                if (pill) pill.textContent = 'All caught up';
-                markAllBtn.remove();
-            });
-        });
-    }
 });
 </script>
 <?php include 'includes/footer.php'; ?>

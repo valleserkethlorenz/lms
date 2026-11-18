@@ -205,9 +205,14 @@ if ($protestIdParam > 0) {
         if($conflicts){ $conn->rollback(); sendResponse(409,'Resolve scheduling conflicts before publishing.',['conflicts'=>$conflicts]); return; }
         $up=$conn->prepare("UPDATE tbl_schedule SET published_at=NOW(),status='Scheduled',conflict_detected=0,conflict_reason=NULL WHERE id=? AND published_at IS NULL"); $up->bind_param('i',$scheduleId); $up->execute();
         if($up->affected_rows!==1){ $up->close(); $conn->rollback(); sendResponse(409,'Match publication state changed. Refresh and try again.'); return; } $up->close();
-        $message="Match published: {$match['team_a_name']} vs {$match['team_b_name']} on {$match['date']} at {$match['time']}";
+        $venueLabel = trim((string) ($match['venue'] ?? ''));
+        $message = "Match in \"{$match['league_name']}\": {$match['team_a_name']} vs {$match['team_b_name']} on "
+            . date('M d, Y', strtotime((string) $match['date'])) . " at " . date('h:i A', strtotime((string) $match['time']))
+            . ($venueLabel !== '' ? " ({$venueLabel})" : '') . ".";
         // Delivery is best effort: a notification must never roll back the
-        // publication the organizer already committed to.
+        // publication the organizer already committed to. notifyScheduleUpdate()
+        // resolves only team_a/team_b, so no other representative in the league
+        // sees this fixture.
         try {
             notifyScheduleUpdate($conn,(int)$match['league_id'],$scheduleId,$message);
             createNotification($conn,(int)$match['committee_user_id'],'committee_assignment','Match Assignment',$message,$scheduleId);
@@ -540,7 +545,7 @@ if ($protestIdParam > 0) {
             return;
         }
 
-        $statusStmt = $conn->prepare("SELECT status, date, time, committee_user_id, published_at,
+        $statusStmt = $conn->prepare("SELECT status, date, time, venue, committee_user_id, published_at,
                                              stage_id, stage_group_id, team_a, team_b, league_id
                                       FROM tbl_schedule WHERE id = ?");
         if (!$statusStmt) {
@@ -562,6 +567,18 @@ if ($protestIdParam > 0) {
             sendResponse(400, "Completed matches cannot be rescheduled.");
             return;
         }
+
+        // Compare the posted values with the stored row. The edit form always
+        // sends date/time/venue, so "a field was posted" is not evidence that the
+        // fixture changed (for example: assigning a different Committee only).
+        $change = scheduleChangeSet($statusRow, [
+            'date'               => $date,
+            'time'               => $time,
+            'venue'              => $venue,
+            'team_a_id'          => $teamAId,
+            'team_b_id'          => $teamBId,
+            'committee_user_id'  => $committeeUserId,
+        ]);
 
         $effectiveDate = $date ?: $statusRow['date'];
         $effectiveTime = $time ?: $statusRow['time'];
@@ -653,20 +670,98 @@ if ($protestIdParam > 0) {
         
         if ($stmt->execute()) {
             $stmt->close();
-            if ($statusRow['published_at'] && $committeeUserId > 0 && (int)$statusRow['committee_user_id'] !== $committeeUserId) {
-                createNotification($conn, $committeeUserId, 'committee_assignment', 'Match Assignment', 'You were assigned to an updated match schedule.', $scheduleId);
-                auditLog($conn, 'Assign Committee', "Assigned Committee user ID $committeeUserId to match ID $scheduleId");
-            }
-            // Notify the two teams involved that their match was rescheduled
-            if ($statusRow['published_at'] && ($date || $time || $venue !== null)) {
-                $rStmt = $conn->prepare("SELECT team_a, team_b, date, time, venue FROM tbl_schedule WHERE id = ?");
-                $rStmt->bind_param('i', $scheduleId);
-                $rStmt->execute();
-                $rRow = $rStmt->get_result()->fetch_assoc();
-                $rStmt->close();
-                if ($rRow) {
-                    notifyMatchRescheduled($conn, $scheduleId, $rRow['team_a'], $rRow['team_b'], $rRow['date'], $rRow['time'], $rRow['venue']);
+            try {
+                if ($statusRow['published_at'] && ($change['schedule_changed'] || $change['committee_changed'])) {
+                    $detailStmt = $conn->prepare(
+                        "SELECT s.team_a, s.team_b, s.date, s.time, s.venue,
+                                l.league_name,
+                                ta.team_name AS team_a_name, tb.team_name AS team_b_name
+                           FROM tbl_schedule s
+                           JOIN tbl_league l ON l.id = s.league_id
+                           LEFT JOIN tbl_team ta ON ta.id = s.team_a
+                           LEFT JOIN tbl_team tb ON tb.id = s.team_b
+                          WHERE s.id = ? LIMIT 1"
+                    );
+                    $detail = null;
+                    if ($detailStmt) {
+                        $detailStmt->bind_param('i', $scheduleId);
+                        $detailStmt->execute();
+                        $detail = $detailStmt->get_result()->fetch_assoc();
+                        $detailStmt->close();
+                    }
+
+                    $leagueName = trim((string) ($detail['league_name'] ?? ''));
+                    $teamAName  = trim((string) ($detail['team_a_name'] ?? 'Team A'));
+                    $teamBName  = trim((string) ($detail['team_b_name'] ?? 'Team B'));
+                    $dateLabel  = !empty($detail['date']) ? date('M d, Y', strtotime((string) $detail['date'])) : '';
+                    $timeLabel  = !empty($detail['time']) ? date('h:i A', strtotime((string) $detail['time'])) : '';
+                    $venueLabel = trim((string) ($detail['venue'] ?? ''));
+                    $details = ($leagueName !== '' ? "\"$leagueName\" — " : '')
+                        . "$teamAName vs $teamBName"
+                        . ($dateLabel !== '' ? " on $dateLabel" : '')
+                        . ($timeLabel !== '' ? " at $timeLabel" : '')
+                        . ($venueLabel !== '' ? " ($venueLabel)" : '');
+
+                    $changes = [];
+                    if ($change['date_changed']) {
+                        $changes[] = 'date '
+                            . ($change['old_date'] !== '' ? date('M d, Y', strtotime($change['old_date'])) : 'TBD')
+                            . ' → '
+                            . ($change['new_date'] !== '' ? date('M d, Y', strtotime($change['new_date'])) : 'TBD');
+                    }
+                    if ($change['time_changed']) {
+                        $changes[] = 'time '
+                            . ($change['old_time'] !== '' ? date('h:i A', strtotime($change['old_time'])) : 'TBD')
+                            . ' → '
+                            . ($change['new_time'] !== '' ? date('h:i A', strtotime($change['new_time'])) : 'TBD');
+                    }
+                    if ($change['venue_changed']) {
+                        $changes[] = 'venue '
+                            . ($change['old_venue'] !== '' ? $change['old_venue'] : 'TBD')
+                            . ' → '
+                            . ($change['new_venue'] !== '' ? $change['new_venue'] : 'TBD');
+                    }
+                    $changeSuffix = $changes ? ' Changes: ' . implode('; ', $changes) . '.' : '';
+
+                    // The Committee running the match must know about its own
+                    // assignment change or a moved fixture.
+                    if ($change['committee_changed']) {
+                        if ($change['final_committee_id'] > 0) {
+                            createNotification($conn, $change['final_committee_id'], 'committee_assignment', 'Match Assignment',
+                                "You were assigned to: $details.", $scheduleId);
+                            auditLog($conn, 'Assign Committee', "Assigned Committee user ID {$change['final_committee_id']} to match ID $scheduleId");
+                        } elseif ($change['old_committee_id'] > 0) {
+                            createNotification($conn, $change['old_committee_id'], 'committee_assignment', 'Match Unassigned',
+                                "You are no longer assigned to: $details.", $scheduleId);
+                        }
+                    } elseif ($change['schedule_changed'] && $change['final_committee_id'] > 0) {
+                        createNotification($conn, $change['final_committee_id'], 'committee_assignment', 'Match Schedule Updated',
+                            "The match you are assigned to was updated: $details.$changeSuffix", $scheduleId);
+                    }
+                    // Team notices. Handle a team swap separately so the incoming
+                    // team is not told it was removed.
+                    if ($change['teams_changed']) {
+                        if (!empty($change['removed_teams'])) {
+                            notifyTeamRepresentatives($conn, $change['removed_teams'], 'schedule_update', 'Match Updated',
+                                'Your team is no longer scheduled in this match'
+                                . ($leagueName !== '' ? " in \"$leagueName\"" : '') . '.', $scheduleId);
+                        }
+                        if (!empty($change['added_teams'])) {
+                            notifyTeamRepresentatives($conn, $change['added_teams'], 'schedule_update', 'Match Scheduled',
+                                "Your team has been added to a match: $details.", $scheduleId);
+                        }
+                        if (!empty($change['kept_teams'])) {
+                            notifyTeamRepresentatives($conn, $change['kept_teams'], 'schedule_update', 'Match Updated',
+                                "Your match was updated: $details.$changeSuffix", $scheduleId);
+                        }
+                    } elseif ($change['schedule_changed']) {
+                        notifyTeamRepresentatives($conn, [$change['final_team_a'], $change['final_team_b']],
+                            'schedule_update', 'Match Rescheduled',
+                            "Your match was rescheduled: $details.$changeSuffix", $scheduleId);
+                    }
                 }
+            } catch (Throwable $e) {
+                error_log('[notification] Reschedule notice failed for schedule ' . $scheduleId . ': ' . $e->getMessage());
             }
             auditLog($conn, 'Update Match Schedule', "Updated match ID $scheduleId");
             sendResponse(200, "Match updated successfully");
@@ -705,7 +800,7 @@ if ($protestIdParam > 0) {
             return;
         }
 
-        $infoStmt = $conn->prepare("SELECT league_id, status FROM tbl_schedule WHERE id = ? LIMIT 1");
+        $infoStmt = $conn->prepare("SELECT league_id, status, team_a, team_b, committee_user_id, published_at FROM tbl_schedule WHERE id = ? LIMIT 1");
         if (!$infoStmt) {
             sendResponse(500, "Database error: " . $conn->error);
             return;
@@ -741,6 +836,63 @@ if ($protestIdParam > 0) {
 
         $reversalNote = $reversed !== null ? '; its recorded progression was reversed' : '';
         auditLog($conn, 'Archive Match', "Archived match ID $scheduleId$reversalNote (league ID " . (int)$matchInfo['league_id'] . ")");
+        // A published fixture disappears from both teams' schedule and from the
+        // Committee's match list, so tell them explicitly. Best effort: the
+        // archive is already committed. A completed match is a voided result,
+        // not a cancelled scheduled fixture.
+        if (!empty($matchInfo['published_at'])) {
+            try {
+                $wasCompleted = strtolower((string) $matchInfo['status']) === 'completed';
+                $detailStmt = $conn->prepare(
+                    "SELECT l.league_name,
+                            ta.team_name AS team_a_name, tb.team_name AS team_b_name,
+                            s.date
+                       FROM tbl_schedule s
+                       JOIN tbl_league l ON l.id = s.league_id
+                       LEFT JOIN tbl_team ta ON ta.id = s.team_a
+                       LEFT JOIN tbl_team tb ON tb.id = s.team_b
+                      WHERE s.id = ? LIMIT 1"
+                );
+                $detail = [];
+                if ($detailStmt) {
+                    $detailStmt->bind_param('i', $scheduleId);
+                    $detailStmt->execute();
+                    $detail = $detailStmt->get_result()->fetch_assoc() ?: [];
+                    $detailStmt->close();
+                }
+
+                $leagueName = trim((string) ($detail['league_name'] ?? ''));
+                $teamAName  = trim((string) ($detail['team_a_name'] ?? 'Team A'));
+                $teamBName  = trim((string) ($detail['team_b_name'] ?? 'Team B'));
+                $dateLabel  = !empty($detail['date']) ? date('M d, Y', strtotime((string) $detail['date'])) : '';
+                $context = ($leagueName !== '' ? "\"$leagueName\": " : '')
+                    . "$teamAName vs $teamBName"
+                    . ($dateLabel !== '' ? " on $dateLabel" : '');
+
+                if ($wasCompleted) {
+                    notifyTeamRepresentatives($conn, [(int)$matchInfo['team_a'], (int)$matchInfo['team_b']],
+                        'match_result', 'Result Voided',
+                        "The result for $context was voided by the organizer; standings and progression were reversed.",
+                        $scheduleId);
+                    if ((int)($matchInfo['committee_user_id'] ?? 0) > 0) {
+                        createNotification($conn, (int)$matchInfo['committee_user_id'], 'committee_assignment',
+                            'Result Voided',
+                            "The result for $context was voided by the organizer.", $scheduleId);
+                    }
+                } else {
+                    notifyTeamRepresentatives($conn, [(int)$matchInfo['team_a'], (int)$matchInfo['team_b']],
+                        'schedule_update', 'Match Cancelled',
+                        "The match $context was cancelled by the organizer.", $scheduleId);
+                    if ((int)($matchInfo['committee_user_id'] ?? 0) > 0) {
+                        createNotification($conn, (int)$matchInfo['committee_user_id'], 'committee_assignment',
+                            'Match Cancelled',
+                            "The match $context was cancelled by the organizer.", $scheduleId);
+                    }
+                }
+            } catch (Throwable $e) {
+                error_log('[notification] Match cancellation notice failed for schedule ' . $scheduleId . ': ' . $e->getMessage());
+            }
+        }
         sendResponse(200, 'Match deleted successfully' . ($reversalNote ? $reversalNote . '.' : '.'));
         return;
     }
@@ -994,6 +1146,14 @@ if ($protestIdParam > 0) {
         }
         $conn->commit();
 
+        if ($decision === 'Upheld') {
+            try {
+                notifyResultReopened($conn, $scheduleId);
+            } catch (Throwable $e) {
+                error_log('[notification] Result-reopen notice failed for schedule ' . $scheduleId . ': ' . $e->getMessage());
+            }
+        }
+
         auditLog($conn, 'Result Protest', "Protest #$protestId on match ID $scheduleId ($party, $decision) in league ID $leagueId");
         $msg = $decision === 'Upheld'
             ? 'Protest upheld — result reopened for correction (' . count($reversal['teams']) . ' team status(es) restored, ' . count($reversal['removed_matches']) . ' bracket row(s) removed).'
@@ -1042,6 +1202,14 @@ if ($protestIdParam > 0) {
             $restore->close();
         }
         $conn->commit();
+
+        if ($decision === 'Upheld') {
+            try {
+                notifyResultReopened($conn, $scheduleId);
+            } catch (Throwable $e) {
+                error_log('[notification] Result-reopen notice failed for schedule ' . $scheduleId . ': ' . $e->getMessage());
+            }
+        }
 
         auditLog($conn, 'Decide Protest', "Protest #$protestId $decision for match ID $scheduleId (league ID $leagueId)");
         sendResponse(201, $decision === 'Upheld'

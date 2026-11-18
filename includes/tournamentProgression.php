@@ -305,8 +305,17 @@ function notifyProgression($conn, $leagueId, $leagueName, $scheduleId, $actions)
         $cs = $conn->prepare("SELECT team_name FROM tbl_team WHERE id = ?");
         $cs->bind_param("i", $actions['champion']); $cs->execute();
         $cr = $cs->get_result()->fetch_assoc(); $cs->close();
+        $championName = $cr['team_name'] ?? 'Unknown';
         createNotification($conn, $orgId, 'tournament_complete', "Tournament Complete!",
-            ($cr['team_name'] ?? 'Unknown') . " is the champion of \"$leagueName\"!", $leagueId);
+            $championName . " is the champion of \"$leagueName\"!", $leagueId);
+        if (function_exists('notifyTeamRepresentatives')) {
+            try {
+                notifyTeamRepresentatives($conn, [(int) $actions['champion']], 'tournament_complete', 'Tournament Champion!',
+                    $championName . " won \"$leagueName\"!", $leagueId);
+            } catch (Throwable $e) {
+                error_log('[notification] Champion notice failed: ' . $e->getMessage());
+            }
+        }
         return;
     }
     $rc = $actions['round_complete'] ?? $actions['stage_round_complete'] ?? $actions['winners_round_complete'] ?? $actions['losers_round_complete'] ?? $actions['knockout_round_complete'] ?? null;
@@ -318,6 +327,22 @@ function notifyProgression($conn, $leagueId, $leagueName, $scheduleId, $actions)
         $label = $br ? "$br Round $rc" : "Round $rc";
         createNotification($conn, $orgId, 'round_complete', "Round Complete",
             "$label in \"$leagueName\" is complete. Next round ready.", $leagueId);
+    }
+    if (!empty($actions['advanced']) && function_exists('notifyTeamRepresentatives')) {
+        try {
+            notifyTeamRepresentatives($conn, $actions['advanced'], 'round_complete', 'Team Advanced',
+                "Your team advanced to the next round in \"$leagueName\".", $leagueId);
+        } catch (Throwable $e) {
+            error_log('[notification] Advancement notice failed: ' . $e->getMessage());
+        }
+    }
+    if (!empty($actions['eliminated']) && function_exists('notifyTeamRepresentatives')) {
+        try {
+            notifyTeamRepresentatives($conn, $actions['eliminated'], 'round_complete', 'Team Eliminated',
+                "Your team was eliminated from \"$leagueName\".", $leagueId);
+        } catch (Throwable $e) {
+            error_log('[notification] Elimination notice failed: ' . $e->getMessage());
+        }
     }
     if (!empty($actions['ready_for_next_round'])) {
         createNotification($conn, $orgId, 'round_complete', "Swiss Round {$actions['round_complete']} Complete",

@@ -334,8 +334,13 @@ foreach($replacementUploads as $documentId=>$replacement) {
     if(!empty($replacement['old'])) deleteStoredDocument($replacement['old']);
 }
 
-// Notify organizer
-notifyTeamRegistration($conn, $team['league_id'], $teamName, $teamId);
+// Notify organizer (best effort: a notification must never turn a successful
+// resubmission into an error response).
+try {
+    notifyTeamRegistration($conn, $team['league_id'], $teamName, $teamId, true);
+} catch (Throwable $e) {
+    error_log('[notification] Resubmission notice failed for team ' . $teamId . ': ' . $e->getMessage());
+}
 auditLog($conn,'Resubmit Registration',"Corrected and resubmitted team registration: $teamName (ID $teamId)");
 
 echo json_encode(['status' => 200, 'msg' => 'Re-application submitted successfully']);

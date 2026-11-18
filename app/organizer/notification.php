@@ -87,12 +87,16 @@ $notifIcons = [
     'tournament_complete'      => ['bi-trophy-fill', 'schedule'],
     'registration_closing'     => ['bi-clock-fill', 'announcement'],
     'announcement'             => ['bi-megaphone-fill', 'announcement'],
+    'league_full'              => ['bi-people-fill', 'team'],
 ];
 
 // Short label shown next to the timestamp.
 $notifCategory = static function (string $type): string {
     if (strpos($type, 'team') === 0) {
         return 'Team';
+    }
+    if (strpos($type, 'league') === 0) {
+        return 'League';
     }
     if ($type === 'announcement' || $type === 'registration_closing') {
         return 'Announcement';

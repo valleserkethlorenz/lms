@@ -82,6 +82,7 @@ $notifIcons = [
     'upcoming_match'           => ['bi-stopwatch-fill', 'schedule'],
     'committee_assignment'     => ['bi-person-badge-fill', 'schedule'],
     'match_result'             => ['bi-trophy-fill', 'schedule'],
+    'result_reminder'          => ['bi-clipboard2-check-fill', 'schedule'],
     'round_complete'           => ['bi-diagram-3-fill', 'schedule'],
     'group_stage_complete'     => ['bi-diagram-3-fill', 'schedule'],
     'tournament_complete'      => ['bi-trophy-fill', 'schedule'],
@@ -97,7 +98,7 @@ $notifCategory = static function (string $type): string {
     if ($type === 'announcement' || $type === 'registration_closing') {
         return 'Announcement';
     }
-    if (preg_match('/^(schedule|upcoming|committee|match|round|group|tournament)/', $type)) {
+    if (preg_match('/^(schedule|upcoming|committee|match|result|round|group|tournament)/', $type)) {
         return 'Schedule';
     }
     return 'Update';

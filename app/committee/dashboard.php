@@ -13,6 +13,20 @@ $userType = currentRole();
 
 $today = date('Y-m-d');
 
+// Daily reminders (fallback for installations without the cron script). The
+// per-notification dedupe checks make this safe to overlap with
+// scripts/run_daily_notifications.php.
+$cmTodayKey = 'committee_daily_notif_' . date('Y-m-d');
+if (empty($_SESSION[$cmTodayKey])) {
+    try {
+        notifyCommitteeUpcomingMatchToday($conn);
+        notifyCommitteePendingResults($conn);
+    } catch (Throwable $e) {
+        error_log('[notification] Committee daily reminders failed: ' . $e->getMessage());
+    }
+    $_SESSION[$cmTodayKey] = true;
+}
+
 // ── Assignment counts ────────────────────────────────────────────────────
 $upcoming = $conn->prepare("SELECT COUNT(*) AS c FROM tbl_schedule WHERE committee_user_id=? AND published_at IS NOT NULL AND status NOT IN ('Completed','Cancelled') AND date >= ?");
 $upcoming->bind_param('is', $userId, $today); $upcoming->execute();
@@ -168,6 +182,7 @@ $notifIcons = [
     'upcoming_match'           => ['bi-stopwatch-fill', 'schedule'],
     'committee_assignment'     => ['bi-person-badge-fill', 'schedule'],
     'match_result'             => ['bi-trophy-fill', 'schedule'],
+    'result_reminder'          => ['bi-clipboard2-check-fill', 'schedule'],
     'round_complete'           => ['bi-diagram-3-fill', 'schedule'],
     'group_stage_complete'     => ['bi-diagram-3-fill', 'schedule'],
     'tournament_complete'      => ['bi-trophy-fill', 'schedule'],

@@ -116,35 +116,8 @@
     background:var(--ad-navy-2); border-color:var(--ad-navy-2); color:#fff !important;
     box-shadow:0 10px 20px -10px rgba(9,23,60,.85);
 }
-.ad-panel-count { display:inline-flex; align-items:center; padding:4px 9px; border-radius:999px; background:var(--ad-soft); color:#64708a; font-size:9.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
-.ad-notif-tools { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 button.ad-panel-link { background:none; cursor:pointer; font-family:inherit; }
 button.ad-panel-link:disabled { opacity:.55; cursor:default; background:none; border-color:var(--ad-line); color:#4b5563; }
-
-/* ---------- Inbox list --------------------------------------------------- */
-.ad-notif-list { padding:6px 22px 10px; }
-.ad-notif { position:relative; display:grid; grid-template-columns:34px minmax(0,1fr); gap:12px; align-items:flex-start; padding:12px 0; color:inherit; }
-.ad-notif + .ad-notif { border-top:1px solid var(--ad-line-soft); }
-.ad-notif:hover { text-decoration:none; color:inherit; }
-.ad-notif:hover .ad-notif-title { color:var(--ad-blue); }
-.ad-notif.is-unread::before { content:""; position:absolute; left:-22px; top:11px; bottom:11px; width:3px; border-radius:0 2px 2px 0; background:var(--ad-blue); }
-.ad-notif-icon { display:grid; place-items:center; width:34px; height:34px; border-radius:10px; font-size:14px; flex:0 0 auto; }
-.ad-notif-icon.is-team { background:#f3e8ff; color:#7c3aed; }
-.ad-notif-icon.is-schedule { background:#e7f8ef; color:#0f7a4e; }
-.ad-notif-icon.is-announcement { background:#fff4e0; color:#a16207; }
-.ad-notif-icon.is-default { background:#eef1f6; color:#5b6577; }
-.ad-notif-body { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.ad-notif-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12.5px; font-weight:600; color:var(--ad-navy); transition:color .15s ease; }
-.ad-notif:not(.is-unread) .ad-notif-title { color:#5b6577; font-weight:500; }
-.ad-notif-msg { display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; font-size:11.5px; line-height:1.45; color:#8b95a8; }
-.ad-notif-time { font-size:9px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:#b3bccd; }
-.ad-notif-foot { display:flex; align-items:center; gap:10px; }
-.ad-notif-mark {
-    background:none; border:none; padding:0; margin:0;
-    font-family:inherit; font-size:9px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--ad-blue); cursor:pointer;
-}
-.ad-notif-mark:hover { text-decoration:underline; }
 
 /* ---------- New accounts list ------------------------------------------- */
 .ad-user-list { padding:6px 22px 12px; }
@@ -209,10 +182,7 @@ button.ad-panel-link:disabled { opacity:.55; cursor:default; background:none; bo
     .ad-metric-go { display:none; }
     .ad-panel-head { padding-left:16px; padding-right:16px; }
     .ad-panel-title { font-size:1rem; }
-    .ad-notif-list, .ad-user-list { padding-left:16px; padding-right:16px; }
-    .ad-notif.is-unread::before { left:-16px; }
-    .ad-notif-icon { width:30px; height:30px; font-size:13px; }
-    .ad-notif { grid-template-columns:30px minmax(0,1fr); gap:10px; }
+    .ad-user-list { padding-left:16px; padding-right:16px; }
     .ad-empty { padding:34px 18px; }
     .ad-cell-action { max-width:160px; }
 
@@ -240,6 +210,6 @@ button.ad-panel-link:disabled { opacity:.55; cursor:default; background:none; bo
 @media (prefers-reduced-motion: reduce) {
     .ad-home .dash-animate { animation:none !important; }
     .ad-live-dot { animation:none; }
-    .ad-metric, .ad-notif, .ad-panel-link, .ad-empty-cta { transition:none; }
+    .ad-metric, .ad-panel-link, .ad-empty-cta { transition:none; }
 }
 </style>

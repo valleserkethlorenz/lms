@@ -52,13 +52,14 @@ var routeBase = <?= json_encode($notifRouteBase ?? '') ?>;
 var routes = {
     1: {
         'team_registration': 'pending_teams.php',
-        'team_cancelled': 'pending_teams.php',
+        'team_cancelled': 'league_info.php',
         'team_correction': 'pending_teams.php',
         'team_correction_reminder': 'pending_teams.php',
-        'team_correction_expired': 'pending_teams.php',
+        'team_correction_expired': 'league_info.php',
         'team_approved': 'league_info.php',
         'team_rejected': 'league_info.php',
         'announcement': 'league_info.php',
+        'league_full': 'league_info.php',
         'schedule_updated': 'schedule.php',
         'schedule_update': 'schedule.php',
         'upcoming_match': 'schedule.php',
@@ -77,11 +78,15 @@ var routes = {
         'team_correction': 'view_team.php',
         'team_correction_reminder': 'view_team.php',
         'team_correction_expired': 'view_team.php',
-        'schedule_updated': 'league.php',
-        'schedule_update': 'league.php',
-        'match_result': 'league.php',
+        'schedule_updated': '../../schedule.php',
+        'schedule_update': '../../schedule.php',
+        'upcoming_match': '../../schedule.php',
+        'committee_assignment': '../../schedule.php',
+        'match_result': '../../standing.php',
+        'round_complete': '../../standing.php',
+        'group_stage_complete': '../../standing.php',
+        'tournament_complete': '../../standing.php',
         'registration_closing': 'browse_leagues.php',
-        'upcoming_match': 'league.php',
         'announcement': 'league.php'
     },
     4: {
@@ -93,6 +98,7 @@ var routes = {
         'schedule_updated': 'matches.php',
         'schedule_update': 'matches.php',
         'match_result': 'matches.php',
+        'result_reminder': 'matches.php',
         'registration_closing': 'matches.php',
         'upcoming_match': 'matches.php',
         'committee_assignment': 'matches.php',
@@ -118,6 +124,8 @@ var icons = {
     'upcoming_match': 'bi-stopwatch-fill',
     'committee_assignment': 'bi-person-badge-fill',
     'match_result': 'bi-trophy-fill',
+    'result_reminder': 'bi-clipboard2-check-fill',
+    'league_full': 'bi-people-fill',
     'round_complete': 'bi-diagram-3-fill',
     'group_stage_complete': 'bi-diagram-3-fill',
     'tournament_complete': 'bi-trophy-fill',
@@ -152,8 +160,8 @@ function getIcon(type) { return icons[type] || 'bi-bell-fill'; }
 
 function getIconColor(type) {
     type = String(type || '');
-    if (type.indexOf('team') !== -1) return 'team';
-    if (type.indexOf('schedule') !== -1 || type.indexOf('match') !== -1) return 'schedule';
+    if (type.indexOf('team') !== -1 || type.indexOf('league') !== -1) return 'team';
+    if (type.indexOf('schedule') !== -1 || type.indexOf('match') !== -1 || type.indexOf('result') !== -1) return 'schedule';
     if (type.indexOf('round') !== -1 || type.indexOf('stage') !== -1 || type.indexOf('tournament') !== -1) return 'schedule';
     if (type === 'announcement' || type === 'registration_closing') return 'announcement';
     return 'default';
