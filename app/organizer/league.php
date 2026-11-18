@@ -51,7 +51,7 @@ include 'includes/header.php';
                         <!-- League Table -->
                         <div class="activity-section dash-animate dash-animate-d5 mb-4">
                             <div class="activity-header">
-                                <div><span class="section-eyebrow">Season overview</span><h2 class="section-title">League register <span class="activity-badge-count"><?= (int) $total_leagues ?> total</span></h2></div>
+                                <div><span class="section-eyebrow">Season overview</span><h2 class="section-title">League Management <span class="activity-badge-count"><?= (int) $total_leagues ?> total</span></h2></div>
                                 <a href="create_league.php" class="activity-view-all"><i class="bi bi-plus-lg" aria-hidden="true"></i>Create League</a>
                             </div>
                             <div class="league-filter-bar">
