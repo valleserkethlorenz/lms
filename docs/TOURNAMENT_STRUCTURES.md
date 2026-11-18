@@ -191,6 +191,31 @@ Standings are computed **on read** from the completed matches
 (`standingsProvider.php`), so saving a score instantly changes the table — there is
 no stale cache to rebuild.
 
+### 4.3 Standings surfaces
+
+Both `standing.php` (public) and `app/organizer/standing.php` read
+`includes/standingsSections.php → getLeagueStandingsSections()`. The builder turns
+the stage structure into display sections:
+
+| Stage format | Section |
+|---|---|
+| `round_robin` / `swiss` | One table per stage group, or one stage-wide table |
+| `single_elimination` / `double_elimination` | Winners / losers / grand-final bracket columns |
+| `placement` | Placement match cards |
+| No stages | Legacy group tables or one overall table |
+
+- Table rows still come from `standingsProvider.php` (`getLeagueStandings()`,
+  `getStageGroupStandings()` and `getStageStandings()`), so points, tiebreaks,
+  forfeits and set scoring are identical to every other surface.
+- Group tables honour carry-over sources (`tbl_league_stage_group_source`).
+- Bracket cards include byes and unpublished later rounds; unpublished details
+  (date, score, winner) stay hidden.
+- Published results that are not tagged to a stage appear in a separate
+  **Overall standings — untagged results** section.
+- The organizer page can move a team between groups of the same stage
+  (`assignStageGroup` → `moveStageTeamToGroup()`); a team stays in exactly one
+  group per stage.
+
 ---
 
 ## 5. Progression rules

@@ -1316,6 +1316,29 @@ function getMultiGroupStandings(mysqli $conn, int $leagueId, array $groupIds, ?a
 }
 
 /**
+ * Standings for one table-style stage that does not use stage groups
+ * (a plain round robin or a Swiss stage).
+ *
+ * The match scope is the stage itself, so stage-level fixtures count even when
+ * no stage group is attached. Like every other table it delegates to the
+ * canonical provider, which keeps the league's points and tiebreaks intact.
+ *
+ * @return array<int,array> ranked rows
+ */
+function getStageStandings(mysqli $conn, int $leagueId, int $stageId, ?array $rules = null): array {
+    if ($rules === null) $rules = getLeagueScoringRules($conn, $leagueId);
+    $teamIds = array_keys(stageParticipantTeamIds($conn, $leagueId, $stageId));
+    if (empty($teamIds)) return [];
+
+    return getLeagueStandings($conn, $leagueId, [
+        'rules'        => $rules,
+        'scope_sql'    => 's.stage_id = ?',
+        'scope_params' => [$stageId],
+        'team_ids'     => $teamIds,
+    ]);
+}
+
+/**
  * Carry qualifiers from a source stage into a target stage and mark the rest eliminated.
  *
  * $targetMapping maps each TARGET group to the SOURCE groups that feed it, e.g.

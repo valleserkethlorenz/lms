@@ -547,7 +547,7 @@ function getLeagueBracketSchedule($conn, $leagueId) {
     $sql = "SELECT s.id, s.league_id, s.league_group_id, s.stage_id, s.stage_group_id,
             s.team_a, s.team_b, s.a_score, s.b_score, s.date, s.time, s.venue,
             s.round, s.status, s.winner, s.published_at, s.bracket,
-            s.seed_a, s.seed_b, s.bracket_side, s.node_key, s.stage,
+            s.seed_a, s.seed_b, s.win_type, s.bracket_side, s.node_key, s.stage,
             t_a.team_name as team_a_name,
             t_b.team_name as team_b_name,
             lg.name AS group_name,

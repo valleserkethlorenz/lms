@@ -10,135 +10,146 @@ if ((int) ($_SESSION['lms_role'] ?? 0) === 2) {
 }
 require_once __DIR__.'/includes/league_header.php';
 
-$groups=[]; $groupStmt=$conn->prepare("SELECT id,name,display_order FROM tbl_league_group WHERE league_id=? ORDER BY display_order,name"); $groupStmt->bind_param('i',$id); $groupStmt->execute(); $groupRes=$groupStmt->get_result(); while($g=$groupRes->fetch_assoc())$groups[]=$g; $groupStmt->close();
-$grouping=(int)($league_row['grouping_enabled'] ?? 0)===1;
-require_once __DIR__.'/includes/standingsProvider.php';
-$leagueProfile = getLeagueSportProfile($conn,(int)$id);
-$usesSets      = sportProfileUsesSets($leagueProfile);
-$showPoints    = true;
-$publicRules   = getLeagueScoringRules($conn,(int)$id);
-$setModePublic = (($publicRules['mode'] ?? 'simple') === 'set_line');
-/* One canonical provider feeds the public table, the organizer table and the
-   stage tables, so every surface ranks teams the same way. */
-$rows=[];
-if(!$grouping){
-    $rows=getLeagueStandings($conn,$id,['group_by'=>'legacy']);
-} else {
-    $seen=[];
-    foreach($groups as $publicGroup){
-        $publicGroupId=(int)$publicGroup['id'];
-        foreach(getLeagueStandings($conn,$id,['group_by'=>'legacy','group_filter'=>$publicGroupId,'scope_sql'=>'s.league_group_id = ?','scope_params'=>[$publicGroupId]]) as $publicRow){
-            $rows[]=$publicRow; $seen[(int)$publicRow['id']]=true;
-        }
-    }
-    $allRows=getLeagueStandings($conn,$id,['group_by'=>'legacy']);
-    $leftoverIds=[]; foreach($allRows as $allRow) if(!isset($seen[(int)$allRow['id']])) $leftoverIds[]=(int)$allRow['id'];
-    if($leftoverIds){
-        foreach(getLeagueStandings($conn,$id,['group_by'=>'legacy','team_ids'=>$leftoverIds,'scope_sql'=>'1=0']) as $leftoverRow){
-            $leftoverRow['group_name']=$leftoverRow['group_name'] ?: 'Ungrouped'; $rows[]=$leftoverRow;
-        }
+require_once __DIR__ . '/includes/standingsSections.php';
+require_once __DIR__ . '/includes/standingsView.php';
+
+/* One shared builder feeds the public and organizer pages. It reads the
+   league's stage structure, so every format renders its own table or bracket
+   instead of collapsing every completed match into one league table. */
+$standingsData = getLeagueStandingsSections($conn, (int)$id);
+$sections      = $standingsData['sections'];
+$usesSets      = $standingsData['uses_sets'];
+$leagueProfile = $standingsData['profile'];
+$publicRules   = $standingsData['rules'];
+$stageCount    = $standingsData['stage_count'];
+$totalTeams    = $standingsData['team_count'];
+
+$stageNav = [];
+foreach ($sections as $section) {
+    $sid = (int)($section['stage_id'] ?? 0);
+    if ($sid > 0 && !isset($stageNav[$sid])) {
+        $stageNav[$sid] = [
+            'id'     => $sid,
+            'name'   => (string)$section['stage_name'],
+            'format' => (string)$section['stage_format'],
+        ];
     }
 }
-$sections=[]; foreach($rows as $row){$key=$grouping?($row['group_name']?:'Ungrouped'):'League Rankings';$sections[$key][]=$row;}
 ?>
 <link rel="stylesheet" href="assets/vendor/font-awesome/6.4.0/css/all.min.css">
 <style>
-    /* ==========================================================
-       Standings — page-specific additions only. Shared panels and
-       tables live in includes/league-view-styles.php
-       ========================================================== */
-    .lp-count { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:20px; background:#e8edf7; color:#1a3a7c; font-size:11px; font-weight:600; }
-    .lp-team-logo { width:30px; height:30px; border:1px solid #e8eef6; border-radius:50%; background:#e8eef6; object-fit:cover; }
-    .lp-rank { display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:8px; background:#eef2f7; color:#475569; font-size:11.5px; font-weight:700; }
-    .lp-table tbody tr:nth-child(1) .lp-rank { background:#fef3c7; color:#92400e; }
-    .lp-table tbody tr:nth-child(2) .lp-rank { background:#e2e8f0; color:#334155; }
-    .lp-table tbody tr:nth-child(3) .lp-rank { background:#fde8ec; color:#b42335; }
-    .lp-team-cell { display:inline-flex; align-items:center; gap:9px; min-width:0; font-weight:600; color:var(--lp-navy); }
-    .lp-num { font-variant-numeric:tabular-nums; }
-    .lp-pts { font-weight:700; }
-    .lp-diff-up { color:#15803d; font-weight:600; }
-    .lp-diff-down { color:#b91c1c; font-weight:600; }
-    .lp-prog { display:inline-flex; align-items:center; gap:6px; padding:4px 11px; border-radius:20px; font-size:11px; font-weight:600; letter-spacing:.3px; text-transform:uppercase; }
-    .lp-prog::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.75; }
-    .lp-prog.is-qualified { background:#d1fae5; color:#065f46; }
-    .lp-prog.is-eliminated { background:#fee2e2; color:#991b1b; }
-    .lp-prog.is-neutral { background:#e5e7eb; color:#374151; }
+    <?php include __DIR__ . '/includes/standings-stage-styles.php'; ?>
+
+    /* ---------- Page-specific shell -------------------------------- */
+    .lp-standings-intro { display:flex; align-items:flex-start; gap:10px; margin:0 0 18px; padding:12px 16px; border:1px solid #bfdbfe; border-radius:10px; background:#eff6ff; color:#1e3a8a; font-size:12.5px; line-height:1.55; }
+    .lp-standings-intro i { margin-top:1px; font-size:14px; }
+    .lp-standings-footnote { display:flex; align-items:flex-start; gap:7px; margin:18px 0 0; padding:11px 14px; border-top:1px dashed #e2e8f0; font-size:11.5px; line-height:1.6; color:#64748b; }
+    .lp-standings-footnote i { margin-top:1px; }
+    .lp-stage-hint { display:flex; align-items:flex-start; gap:7px; margin:12px 0 0; font-size:11.5px; line-height:1.5; color:#64748b; }
+    .lp-stage-hint a { font-weight:600; color:#1d4ed8; text-decoration:none; }
+    .lp-stage-hint a:hover { text-decoration:underline; }
+    .lp-rank { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:9px; background:#f1f5f9; color:#475569; font-size:12px; font-weight:700; }
+    .lp-table tbody tr:nth-child(1) .lp-rank { background:#fff4d6; color:#92400e; box-shadow:inset 0 0 0 1px #f2d693; }
+    .lp-table tbody tr:nth-child(2) .lp-rank { background:#eef2f7; color:#475569; box-shadow:inset 0 0 0 1px #dbe2ea; }
+    .lp-table tbody tr:nth-child(3) .lp-rank { background:#fdece0; color:#9a3412; box-shadow:inset 0 0 0 1px #f3c9a8; }
+    .lp-stage-table .lp-table { font-size:13px; }
+    .lp-stage-table .lp-table thead th { padding:10px 12px; }
+    .lp-stage-table .lp-table tbody td { padding:10px 12px; }
+    .lp-stage-table .lp-standings-team-name { max-width:220px; }
     @media (max-width:767.98px) {
-        .lp-table { font-size:12.5px; }
-        .lp-table thead th, .lp-table tbody td { padding:10px 12px; }
+        .lp-stage-table .lp-table { font-size:12.5px; }
+        .lp-stage-table .lp-table thead th, .lp-stage-table .lp-table tbody td { padding:9px 10px; }
+        .lp-stage-table .lp-standings-team-name { max-width:150px; }
     }
 </style>
 <div class="container-fluid lp-page">
+    <div class="lp-standings-intro">
+        <i class="bi bi-info-circle-fill"></i>
+        <span>Standings are calculated <b>per competition stage</b>. Only published, completed matches count toward a table or bracket.</span>
+    </div>
+
     <?php if(!$sections): ?>
         <div class="lp-empty">
             <i class="bi bi-trophy"></i>
             <h5>No standings yet</h5>
             <p>Rankings appear here once the organizer records match results.</p>
         </div>
-    <?php endif; ?>
+    <?php else: ?>
+        <?php if(count($stageNav) > 1): ?>
+            <nav class="lp-stage-nav" aria-label="Competition stages">
+                <span class="lp-stage-nav-label">Stages</span>
+                <?php foreach($stageNav as $navStage): ?>
+                    <a href="#stage-<?= (int)$navStage['id'] ?>">
+                        <i class="bi <?= htmlspecialchars(standingsFormatIcon((string)$navStage['format']), ENT_QUOTES) ?>"></i>
+                        <?= htmlspecialchars($navStage['name']) ?>
+                    </a>
+                <?php endforeach; ?>
+            </nav>
+        <?php endif; ?>
 
-    <?php foreach($sections as $section=>$teams): ?>
-        <section class="lp-panel">
-            <div class="lp-panel-head">
-                <h2 class="lp-panel-title"><span class="lp-panel-icon"><i class="bi bi-trophy-fill"></i></span><?= htmlspecialchars($section) ?></h2>
-                <span class="lp-count"><i class="bi bi-people"></i><?= count($teams) ?> team<?= count($teams) === 1 ? '' : 's' ?></span>
-            </div>
-            <div class="lp-table-wrap">
-                <table class="lp-table">
-                    <thead>
-                        <tr>
-                            <th class="lp-col-num">#</th>
-                            <th>Team</th>
-                            <th class="text-center">MP</th>
-                            <th class="text-center">W</th>
-                            <th class="text-center">D</th>
-                            <th class="text-center">L</th>
-                            <th class="text-center">Pts</th>
-                            <?php if($usesSets): ?><th class="text-center">SW</th><th class="text-center">SL</th><th class="text-center">Set ratio</th><?php endif; ?>
-                            <th class="text-center"><?= $usesSets?'PW':'PF' ?></th>
-                            <th class="text-center"><?= $usesSets?'PL':'PA' ?></th>
-                            <th class="text-center">Diff</th>
-                            <th class="text-center">Progression</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach($teams as $index=>$team):
-                        $tImg=$team['team_image']??'';
-                        if(StorageService::isCloudinary($tImg)){$image=$tImg;}else{$image='assets/uploads/'.$tImg; if(empty($tImg)||!is_file(__DIR__.'/assets/uploads/'.rawurlencode($tImg))) $image='assets/images/default-league.svg';}
-                        $prog=(string)($team['progression_status'] ?? '');
-                        $progClass=$prog==='Qualified'?'is-qualified':($prog==='Eliminated'?'is-eliminated':'is-neutral');
-                        $dispWins=(int)$team['wins']+(int)($team['forfeit_wins']??0);
-                        $dispLosses=(int)$team['losses']+(int)($team['forfeit_losses']??0)+(int)($team['double_forfeits']??0);
-                        $dispDiff=(int)$team['points_for']-(int)$team['points_against'];
-                    ?>
-                        <tr>
-                            <td class="lp-col-num"><span class="lp-rank"><?= $index+1 ?></span></td>
-                            <td>
-                                <span class="lp-team-cell">
-                                    <img src="<?= htmlspecialchars($image) ?>" class="lp-team-logo" alt="" onerror="this.onerror=null;this.src='assets/images/default-league.svg';">
-                                    <?= htmlspecialchars($team['team_name']) ?>
-                                </span>
-                            </td>
-                            <td class="text-center lp-num"><?= (int)$team['played'] ?></td>
-                            <td class="text-center lp-num"><?= $dispWins ?></td>
-                            <td class="text-center lp-num"><?= (int)$team['draws'] ?></td>
-                            <td class="text-center lp-num"><?= $dispLosses ?></td>
-                            <td class="text-center lp-num lp-pts"><?= (int)$team['points'] ?></td>
-                            <?php if($usesSets): ?>
-                                <td class="text-center lp-num"><?= (int)($team['sets_won']??0) ?></td>
-                                <td class="text-center lp-num"><?= (int)($team['sets_lost']??0) ?></td>
-                                <td class="text-center lp-num"><?= number_format((float)($team['set_ratio']??0),3) ?></td>
-                            <?php endif; ?>
-                            <td class="text-center lp-num"><?= (int)$team['points_for'] ?></td>
-                            <td class="text-center lp-num"><?= (int)$team['points_against'] ?></td>
-                            <td class="text-center lp-num <?= $dispDiff>0?'lp-diff-up':($dispDiff<0?'lp-diff-down':'') ?>"><?= ($dispDiff>0?'+':'').$dispDiff ?></td>
-                            <td class="text-center"><span class="lp-prog <?= $progClass ?>"><?= htmlspecialchars($prog !== '' ? $prog : '—') ?></span></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </section>
-    <?php endforeach; ?>
+        <?php foreach($sections as $sectionIndex => $section): ?>
+            <?php
+            $sectionStageId = (int)($section['stage_id'] ?? 0);
+            $sectionAnchor  = $sectionStageId > 0
+                ? 'stage-' . $sectionStageId
+                : 'standings-' . ($sectionIndex + 1);
+            $sectionKind    = (string)($section['kind'] ?? 'table');
+            ?>
+            <section class="lp-panel lp-stage-panel" id="<?= htmlspecialchars($sectionAnchor, ENT_QUOTES) ?>">
+                <?= renderStandingsStageHeader($section, ['show_status' => $sectionStageId > 0]) ?>
+                <div class="lp-stage-body">
+                    <?php if($sectionKind === 'table'): ?>
+                        <?php $tables = $section['tables'] ?? []; ?>
+                        <?php if($tables): ?>
+                            <div class="lp-stage-tables<?= count($tables) > 1 ? ' is-grid' : '' ?>">
+                                <?php foreach($tables as $table): ?>
+                                    <div class="lp-stage-table">
+                                        <?php if(count($tables) > 1 && !empty($table['group_name'])): ?>
+                                            <div class="lp-stage-table-head">
+                                                <b><?= htmlspecialchars((string)$table['group_name']) ?></b>
+                                                <span><?= count($table['rows'] ?? []) ?> team<?= count($table['rows'] ?? []) === 1 ? '' : 's' ?></span>
+                                                <?php if(!empty($table['sources'])): ?>
+                                                    <span class="lp-source-badge"><i class="bi bi-arrow-down-right-circle"></i>Fed by <?= htmlspecialchars(implode(', ', $table['sources'])) ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php elseif(!empty($table['sources'])): ?>
+                                            <div class="lp-stage-table-head">
+                                                <span class="lp-source-badge"><i class="bi bi-arrow-down-right-circle"></i>Fed by <?= htmlspecialchars(implode(', ', $table['sources'])) ?></span>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?= renderStandingsTable($table['rows'] ?? [], [
+                                            'asset_prefix'      => '',
+                                            'show_sets'         => $usesSets,
+                                            'show_progression'  => true,
+                                            'caption'           => trim((string)($section['stage_name'] ?? 'Standings') . (!empty($table['group_name']) ? ' — ' . $table['group_name'] : '')),
+                                            'empty_title'       => 'No standings yet',
+                                            'empty_message'     => 'This table fills as soon as a published match is completed.',
+                                        ]) ?>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <?= renderStandingsEmpty('No teams in this stage yet', 'Teams appear here once they are placed in the stage draw.') ?>
+                        <?php endif; ?>
+                    <?php elseif($sectionKind === 'bracket'): ?>
+                        <?= renderStandingsBracket($section) ?>
+                        <p class="lp-stage-hint">
+                            <i class="bi bi-info-circle"></i>
+                            <span>Bracket results advance automatically when a Committee submits a score.
+                                <a href="schedule.php?id=<?= (int)$id ?>&amp;view=bracket#bracket">Open the full schedule bracket</a>.
+                            </span>
+                        </p>
+                    <?php else: ?>
+                        <?= renderStandingsPlacement($section) ?>
+                    <?php endif; ?>
+                </div>
+            </section>
+        <?php endforeach; ?>
+
+        <p class="lp-standings-footnote">
+            <i class="bi bi-info-circle"></i>
+            <span><b>MP</b> matches played · <b>W</b> wins · <b>D</b> draws · <b>L</b> losses · <b>Pts</b> points · <b>PF/PA</b> points for/against · <b>Diff</b> points difference. For set-based sports, <b>SW/SL</b> are sets won/lost and <b>PW/PL</b> are points won/lost.</span>
+        </p>
+    <?php endif; ?>
 </div>
 <?php require_once __DIR__.'/includes/footer.php'; ?>

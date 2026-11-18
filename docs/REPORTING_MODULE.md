@@ -57,9 +57,12 @@ the public directory and registration gate), not a duplicated SQL expression.
 
 ## Output guarantees
 
-- **Standings** come from `getLeagueStandingsWithGroups()`, so points, forfeits,
-  penalties, set-based rules, group rankings and the configured tiebreak order
-  match `app/organizer/standing.php` and `standing.php` exactly.
+- **Standings** come from `getLeagueStandingsWithGroups()` for the report export,
+  so points, forfeits, penalties, set-based rules, legacy group rankings and the
+  configured tiebreak order match the canonical provider. The public and
+  organizer standings pages use `getLeagueStandingsSections()` on top of the
+  same provider, which also splits stage-based leagues into per-stage tables and
+  brackets; a stage-aware report export is a planned follow-up.
 - **Results** use `tbl_schedule.winner` and `win_type`; a forfeit/walkover is
   not inferred from the score and a double forfeit is not shown as a draw.
 - **Byes** (`Completed` one-team rows) are excluded from schedules, results and
