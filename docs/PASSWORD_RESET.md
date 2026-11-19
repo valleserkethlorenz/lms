@@ -4,13 +4,17 @@
 **Team Representative** (`role = 2`) accounts.
 
 ```
-Step 1  Request code                    Step 2  Verify code
-─────────────────                       ─────────────────
-registered email  →  send 6-digit       enter code  →  session grant
-                     code (10 min)                         (15 min)
-                                                             ↓
-                                                    reset-password.php
-                                                    new password + confirm
+Step 1  Request code
+─────────────────────
+registered email
+   ↓
+active Team Representative?
+   ├─ no  → "No Team Representative account found" (no code sent)
+   └─ yes → send 6-digit code (10 min)
+                ↓
+Step 2  Verify code
+───────────────────
+enter code  →  session grant (15 min)  →  reset-password.php
 ```
 
 The account email (`tbl_user.email`) is the destination. It is the verified
@@ -45,6 +49,7 @@ shared table automatically if it is missing.
 | Control | Value |
 |---|---|
 | Eligible roles | `role = '2'` (Team Representative) and `stat = '1'` |
+| Eligibility check | `tbl_user` lookup before any code row or email is created |
 | Code | 6 digits from `random_int()`, stored as a `password_hash()` |
 | Code expiry | 10 minutes (`PASSWORD_RESET_OTP_EXPIRY`) |
 | Wrong attempts | 5; the code is burned after the fifth failure |
@@ -57,9 +62,15 @@ shared table automatically if it is missing.
 | CSRF | Every POST validates the session token |
 
 Every POST uses POST/redirect/GET, so refreshing the page cannot resend a code.
-The step-1 response is identical for every address; only an active Team
-Representative account receives a code. This keeps the form from being used to
-probe which emails or roles exist.
+
+Step 1 checks `tbl_user` **before** creating a code. If the address does not
+belong to an active Team Representative (`role = '2'`, `stat = '1'`), the page
+shows “No Team Representative account found”, creates no verification row, and
+sends no email. Only eligible accounts reach the OTP step.
+
+This intentionally reveals whether an email belongs to an active Team
+Representative account. The session rate limits reduce mass probing, but they
+do not fully prevent account enumeration; see the security notes below.
 
 Legacy link tokens (`tbl_password_reset`) are still validated by
 `reset-password.php` if one already exists, but the current UI never sends new
@@ -102,8 +113,9 @@ C:\xampp\php\php.exe -S 127.0.0.1:8099 -t .
 C:\xampp\php\php.exe scripts\password_reset_smoke.php http://127.0.0.1:8099
 ```
 
-The HTTP smoke test uses a non-existent email, so it exercises the two-step
-page, CSRF handling and error paths without delivering mail.
+The HTTP smoke test uses a non-existent email to verify the no-account message,
+the email-step CSRF handling, and the unverified reset page without delivering
+mail. The existing-account OTP lifecycle is covered by the database smoke test.
 
 ### Manual flow
 
@@ -121,7 +133,7 @@ page, CSRF handling and error paths without delivering mail.
 |---|---|
 | “Something went wrong” | Check `logs/php_errors.log`. The old failure was `Call to undefined function generateCsrfToken()`. |
 | Code never arrives | Spam folder; `RESEND_API_KEY`; verified Resend domain; `RESEND_TEST_TO`; dev log. |
-| “This account is not eligible” | The account must be `role = '2'` and `stat = '1'`. |
+| “No Team Representative account found” | The email must belong to an active `role = '2'` account (`stat = '1'`). Check the address or contact the administrator. |
 | “Please wait N second(s)” | The 60-second resend cooldown or hourly rate limit is active. |
 | “Your verification has expired” | The 15-minute reset grant is session-bound; verify the code in the same browser. |
 | Reset form does not appear | The OTP step was not completed or the grant expired; request a new code. |
@@ -129,6 +141,10 @@ page, CSRF handling and error paths without delivering mail.
 ## Security notes
 
 - OTPs are stored as hashes; the plaintext is only sent by email.
+- Step 1 deliberately discloses whether an email belongs to an active Team
+  Representative account. This is a usability/security tradeoff; keep the
+  session rate limits enabled, and consider CAPTCHA if enumeration becomes a
+  concern.
 - The reset grant is bound to the browser session, the user ID, and
   `sha256(normalized email)`, and is consumed after a successful reset.
 - Active sessions are not revoked after a reset because the schema has no

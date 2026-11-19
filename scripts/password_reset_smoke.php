@@ -92,8 +92,9 @@ if (preg_match('/name="csrf_token" value="([^"]+)"/', $page['body'], $m)) {
         'email'      => 'nobody-test@example.invalid',
     ], $cookieJar);
     smokeCheck('POST request_code', $first['status'] === 200 && $first['error'] === '', 'status=' . $first['status'] . ' ' . $first['error']);
-    smokeCheck('Unknown email still reaches the OTP step', strpos($first['body'], 'Enter Verification Code') !== false);
-    smokeCheck('Step 2 shows the submitted address', strpos($first['body'], 'nobody-test@example.invalid') !== false);
+    smokeCheck('Unknown email shows the no-account message', strpos($first['body'], 'No Team Representative account found') !== false);
+    smokeCheck('Unknown email stays on step 1', strpos($first['body'], 'Enter Verification Code') === false);
+    smokeCheck('Unknown email is prefilled in the form', strpos($first['body'], 'nobody-test@example.invalid') !== false);
     smokeCheck('POST request_code is not the error page', strpos($first['body'], 'Something went wrong') === false);
 
     if (preg_match('/name="csrf_token" value="([^"]+)"/', $first['body'], $m2)) {
@@ -102,12 +103,12 @@ if (preg_match('/name="csrf_token" value="([^"]+)"/', $page['body'], $m)) {
             'action'     => 'verify_code',
             'code'       => '123456',
         ], $cookieJar);
-        smokeCheck('POST verify_code without a stored code fails safely', $second['status'] === 200 && $second['error'] === '', 'status=' . $second['status'] . ' ' . $second['error']);
-        smokeCheck('Invalid code returns to the OTP step', strpos($second['body'], 'Enter Verification Code') !== false);
-        smokeCheck('Invalid code shows a flash error', strpos($second['body'], 'invalid or has expired') !== false);
+        smokeCheck('POST verify_code without a pending email fails safely', $second['status'] === 200 && $second['error'] === '', 'status=' . $second['status'] . ' ' . $second['error']);
+        smokeCheck('Missing pending email shows the expired-session message', strpos($second['body'], 'Your reset session expired') !== false);
+        smokeCheck('Missing pending email stays on step 1', strpos($second['body'], 'Enter Verification Code') === false);
         smokeCheck('POST verify_code is not the error page', strpos($second['body'], 'Something went wrong') === false);
     } else {
-        smokeCheck('OTP step renders a CSRF token', false);
+        smokeCheck('Step 1 renders a CSRF token', false);
     }
 } else {
     smokeCheck('CSRF token rendered', false);

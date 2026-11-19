@@ -26,6 +26,7 @@ $flash = $_SESSION['pwd_reset_flash'] ?? null;
 unset($_SESSION['pwd_reset_flash']);
 $message = is_array($flash) ? (string) ($flash['message'] ?? '') : '';
 $messageType = is_array($flash) ? (string) ($flash['type'] ?? 'info') : '';
+$lastEmail = is_array($flash) ? (string) ($flash['email'] ?? '') : '';
 
 $pendingEmail = (string) ($_SESSION['pwd_reset_pending_email'] ?? '');
 $step = $pendingEmail !== '' ? 'otp' : 'email';
@@ -56,7 +57,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             : normalizeVerificationEmail($_POST['email'] ?? '');
 
         if (!isValidVerificationEmail($email)) {
-            $_SESSION['pwd_reset_flash'] = ['type' => 'warning', 'message' => 'Please enter a valid email address.'];
+            $_SESSION['pwd_reset_flash'] = [
+                'type' => 'warning',
+                'message' => 'Please enter a valid email address.',
+                'email' => $email,
+            ];
             header('Location: forgot-password.php');
             exit;
         }
@@ -80,39 +85,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $window = canRequestPasswordResetOtp($conn, $email);
-        if (!$window['allowed']) {
-            $retry = max(1, (int) ($window['retry_after'] ?? PASSWORD_RESET_OTP_RESEND_COOLDOWN));
-            $_SESSION['pwd_reset_flash'] = ['type' => 'warning', 'message' => 'Please wait ' . $retry . ' second(s) before requesting another code.'];
+        // Every valid submission consumes a slot, including addresses that
+        // do not belong to an eligible account.
+        $sendLimiter->record($limiterKey);
+        $ipLimiter->record($clientIp);
+
+        // Check for an active Team Representative before creating a code.
+        // No OTP row is created and no email is sent for any other address.
+        $user = findPasswordResetUser($conn, $email);
+        if (!$user) {
+            clearPasswordResetFlow();
+            $_SESSION['pwd_reset_flash'] = [
+                'type' => 'warning',
+                'message' => 'No Team Representative account found for that email address. Please check the email or contact the administrator.',
+                'email' => $email,
+            ];
             header('Location: forgot-password.php');
             exit;
         }
 
-        $sendLimiter->record($limiterKey);
-        $ipLimiter->record($clientIp);
-
-        // Only active Team Representative accounts receive a code. The
-        // response is identical for every address so this form cannot be
-        // used to probe which emails or roles exist.
-        $user = findPasswordResetUser($conn, $email);
-        if ($user) {
-            cleanupExpiredEmailVerifications($conn, 1);
-            $created = createPasswordResetOtp($conn, $email, $clientIp, $_SERVER['HTTP_USER_AGENT'] ?? '');
-            if (empty($created['ok'])) {
-                $_SESSION['pwd_reset_flash'] = ['type' => 'danger', 'message' => 'We could not create a reset code. Please try again.'];
-                header('Location: forgot-password.php');
-                exit;
-            }
-
-            $sent = sendPasswordResetOtpEmail($email, (string) $created['code'], (string) $user['fname']);
-            if (empty($sent['success'])) {
-                invalidateEmailVerifications($conn, $email);
-                $_SESSION['pwd_reset_flash'] = ['type' => 'danger', 'message' => 'We could not send the reset code. Please try again later.'];
-                header('Location: forgot-password.php');
-                exit;
-            }
+        $window = canRequestPasswordResetOtp($conn, $email);
+        if (!$window['allowed']) {
+            $retry = max(1, (int) ($window['retry_after'] ?? PASSWORD_RESET_OTP_RESEND_COOLDOWN));
+            $_SESSION['pwd_reset_flash'] = [
+                'type' => 'warning',
+                'message' => 'Please wait ' . $retry . ' second(s) before requesting another code.',
+                'email' => $email,
+            ];
+            header('Location: forgot-password.php');
+            exit;
         }
 
+        cleanupExpiredEmailVerifications($conn, 1);
+        $created = createPasswordResetOtp($conn, $email, $clientIp, $_SERVER['HTTP_USER_AGENT'] ?? '');
+        if (empty($created['ok'])) {
+            $_SESSION['pwd_reset_flash'] = ['type' => 'danger', 'message' => 'We could not create a reset code. Please try again.'];
+            header('Location: forgot-password.php');
+            exit;
+        }
+
+        $sent = sendPasswordResetOtpEmail($email, (string) $created['code'], (string) $user['fname']);
+        if (empty($sent['success'])) {
+            invalidateEmailVerifications($conn, $email);
+            $_SESSION['pwd_reset_flash'] = ['type' => 'danger', 'message' => 'We could not send the reset code. Please try again later.'];
+            header('Location: forgot-password.php');
+            exit;
+        }
+
+        // Only a successfully sent code advances to the OTP step.
         $_SESSION['pwd_reset_pending_email'] = $email;
         $_SESSION['pwd_reset_otp_sent_at'] = time();
         $_SESSION['pwd_reset_otp_expires_at'] = time() + PASSWORD_RESET_OTP_EXPIRY;
@@ -234,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span class="input-group-text"><i class="bi bi-envelope"></i></span>
                     <input type="email" class="form-control" id="email" name="email"
                            placeholder="Enter your registered email" required autofocus
-                           value="<?php echo htmlspecialchars($_POST['email'] ?? ''); ?>">
+                           value="<?php echo htmlspecialchars($lastEmail !== '' ? $lastEmail : ($_POST['email'] ?? '')); ?>">
                 </div>
             </div>
             <button type="submit" class="btn btn-r mb-3"><i class="bi bi-send me-1"></i> Send Verification Code</button>
