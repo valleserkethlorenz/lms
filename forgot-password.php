@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['pwd_reset_otp_expires_at'] = time() + PASSWORD_RESET_OTP_EXPIRY;
         $_SESSION['pwd_reset_flash'] = [
             'type' => 'success',
-            'message' => 'If a team representative account with that email exists, a 6-digit code has been sent. Check your inbox and spam folder.',
+            'message' => 'A 6-digit code has been sent. Check your inbox and spam folder.',
         ];
         header('Location: forgot-password.php');
         exit;
@@ -195,9 +195,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .rc-b{padding:24px 20px}
         .btn-r{background:var(--primary);border:none;color:#fff;padding:10px 20px;border-radius:8px;width:100%;font-size:14px;cursor:pointer}
         .btn-r:hover{background:#0d2257;color:#fff}
-        .ml{font-size:13px;color:#64748b}.ml:hover{color:var(--primary)}
-        .home-link{display:inline-flex;align-items:center;gap:6px;margin-top:14px;color:#53617a;font-size:13px;font-weight:600;text-decoration:none}
-        .home-link:hover{color:var(--primary);text-decoration:none}
+        .login-secondary-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+        .login-secondary-link{display:flex;align-items:center;justify-content:center;gap:7px;min-width:0;min-height:42px;padding:8px 10px;border:1px solid #dfe6ef;border-radius:8px;background:#f8fafc;color:#53617a;font-size:12px;font-weight:600;line-height:1.2;text-align:center;text-decoration:none}
+        .login-secondary-link:hover{border-color:#cbd9ee;background:#eef4ff;color:var(--primary);text-decoration:none}
+        .login-secondary-link i{flex:0 0 auto;font-size:13px}
         .otp-input{letter-spacing:.45em;text-align:center;font-weight:700;font-size:18px}
         .policy-note{font-size:12.5px;line-height:1.55;color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:16px}
         .btn-resend{border:1px solid #dfe6ef;background:#f8fafc;color:#53617a;padding:9px 16px;border-radius:8px;width:100%;font-size:13px;font-weight:600;cursor:pointer}
@@ -212,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="rc-h">
         <div class="ic"><i class="bi <?php echo $step === 'otp' ? 'bi-shield-check' : 'bi-key'; ?>"></i></div>
         <h5><?php echo $step === 'otp' ? 'Enter Verification Code' : 'Forgot Your Password?'; ?></h5>
-        <p><?php echo $step === 'otp' ? 'Enter the 6-digit code sent to your email' : 'Team Representative password reset'; ?></p>
+        <p><?php echo $step === 'otp' ? 'Enter the 6-digit code sent to your email' : 'Reset your password here.'; ?></p>
     </div>
     <div class="rc-b">
         <?php if ($message): ?>
@@ -223,11 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <?php if ($step === 'email'): ?>
-        <div class="policy-note">
-            <i class="bi bi-info-circle me-1"></i>
-            Password reset is available for Team Representative accounts.
-            Organizers, committees, and admins should contact the administrator.
-        </div>
+        
         <form method="POST" action="">
             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
             <input type="hidden" name="action" value="request_code">
@@ -274,8 +271,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </form>
         <?php endif; ?>
 
-        <div class="text-center mt-2"><a class="ml" href="login.php"><i class="bi bi-arrow-left me-1"></i> Back to Login</a></div>
-        <div class="text-center"><a class="home-link" href="index.php"><i class="bi bi-house-door"></i> Back to Home</a></div>
+        <div class="login-secondary-actions">
+            <a class="login-secondary-link" href="login.php"><i class="bi bi-arrow-left"></i><span>Back to Login</span></a>
+            <a class="login-secondary-link" href="index.php"><i class="bi bi-house-door"></i><span>Back to Home</span></a>
+        </div>
     </div>
 </div>
 <script src="assets/vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>

@@ -43,7 +43,6 @@
         e.preventDefault();
         LmsDialog.confirm({
             title: 'Log out of your account?',
-            text: 'You will need to sign in again to continue managing the league.',
             confirmButtonText: 'Yes, log out',
             cancelButtonText: 'Stay signed in'
         }).then((confirmed) => {

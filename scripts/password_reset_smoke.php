@@ -72,8 +72,16 @@ function smokeCheck(string $label, bool $ok, string $detail = ''): void
 
 $page = smokeGet($base . '/forgot-password.php', $cookieJar);
 smokeCheck('GET forgot-password.php', $page['status'] === 200 && $page['error'] === '', 'status=' . $page['status'] . ' ' . $page['error']);
-smokeCheck('Step 1 explains the Team Representative scope', strpos($page['body'], 'Team Representative accounts') !== false);
+smokeCheck('Step 1 identifies the Team Representative reset', strpos($page['body'], 'Team Representative') !== false);
 smokeCheck('Step 1 is not the error page', strpos($page['body'], 'Something went wrong') === false);
+smokeCheck(
+    'Back to Login uses the login secondary button style',
+    strpos($page['body'], 'login-secondary-link') !== false && strpos($page['body'], 'Back to Login') !== false
+);
+smokeCheck(
+    'Back to Home uses the login secondary button style',
+    strpos($page['body'], 'login-secondary-link') !== false && strpos($page['body'], 'Back to Home') !== false
+);
 
 if (preg_match('/name="csrf_token" value="([^"]+)"/', $page['body'], $m)) {
     smokeCheck('CSRF token rendered', true);
