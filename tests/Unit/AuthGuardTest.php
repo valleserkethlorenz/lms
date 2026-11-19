@@ -164,4 +164,36 @@ class AuthGuardTest extends TestCase
         $result = validatePasswordComplexity('ValidPass123!');
         $this->assertTrue($result['valid']);
     }
+
+    /**
+     * Test validateCsrfToken accepts the session token.
+     */
+    public function testValidateCsrfTokenAcceptsSessionToken(): void
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            @session_start();
+        }
+        unset($_SESSION['csrf_token']);
+
+        $token = csrfToken();
+
+        $this->assertTrue(validateCsrfToken($token));
+    }
+
+    /**
+     * Test validateCsrfToken rejects wrong and empty tokens.
+     */
+    public function testValidateCsrfTokenRejectsWrongOrEmptyTokens(): void
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            @session_start();
+        }
+        unset($_SESSION['csrf_token']);
+
+        $token = csrfToken();
+
+        $this->assertFalse(validateCsrfToken(''));
+        $this->assertFalse(validateCsrfToken('not-the-token'));
+        $this->assertFalse(validateCsrfToken($token . 'x'));
+    }
 }

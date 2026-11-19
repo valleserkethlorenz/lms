@@ -5,33 +5,84 @@ require_once __DIR__ . '/config/auth_guard.php';
 require_once __DIR__ . '/config/passwordReset.php';
 require_once __DIR__ . '/config/passwordSecurity.php';
 
-$csrfToken = generateCsrfToken();
-$token = $_GET['token'] ?? ($_POST['token'] ?? '');
+$csrfToken = csrfToken();
 $message = '';
 $messageType = '';
-$validToken = false;
-$userId = false;
+$resetUserId = false;
+$mode = ''; // 'grant' (OTP) or 'token' (legacy link)
+$token = (string) ($_GET['token'] ?? ($_POST['token'] ?? ''));
+$resetEmail = '';
 
-if (!empty($token)) {
-    $userId = validatePasswordResetToken($conn, $token);
-    $validToken = ($userId !== false);
-    if (!$validToken) { $message = 'This reset link is invalid, expired, or already used.'; $messageType = 'danger'; }
-} else { $message = 'No reset token provided.'; $messageType = 'warning'; }
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($token) && validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    $userId = validatePasswordResetToken($conn, $token);
-    if ($userId === false) { $message = 'This reset link is no longer valid.'; $messageType = 'danger'; $validToken = false; }
-    elseif (($_POST['new_password'] ?? '') !== ($_POST['confirm_password'] ?? '')) { $message = 'Passwords do not match.'; $messageType = 'warning'; $validToken = true; }
-    else {
-        $v = validatePasswordEnhanced($conn, $userId, $_POST['new_password'] ?? '');
-        if (!$v['valid']) { $message = $v['msg']; $messageType = 'warning'; $validToken = true; }
-        elseif (completePasswordReset($conn, $token, $userId, password_hash($_POST['new_password'], PASSWORD_DEFAULT))) {
-            $message = 'Password reset successful! You can now log in.'; $messageType = 'success'; $validToken = false;
-        } else { $message = 'Something went wrong.'; $messageType = 'danger'; $validToken = true; }
+// OTP flow: the code was verified on forgot-password.php.
+$grant = getPasswordResetGrant();
+if ($grant !== null) {
+    $grantUser = findPasswordResetUserById($conn, (int) $grant['user_id']);
+    $grantEmailHash = $grantUser
+        ? hash('sha256', normalizeVerificationEmail((string) $grantUser['email']))
+        : '';
+    if ($grantUser && hash_equals((string) ($grant['email_hash'] ?? ''), $grantEmailHash)) {
+        $resetUserId = (int) $grantUser['id'];
+        $resetEmail = (string) $grantUser['email'];
+        $mode = 'grant';
+    } else {
+        clearPasswordResetGrant();
     }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && !validateCsrfToken($_POST['csrf_token'] ?? '')) {
-    $message = 'Invalid request.'; $messageType = 'danger';
 }
+
+// Legacy support: old emailed links still work, but the UI now uses OTP.
+if ($resetUserId === false && $token !== '') {
+    $tokenUserId = validatePasswordResetToken($conn, $token);
+    if ($tokenUserId !== false) {
+        $tokenUser = findPasswordResetUserById($conn, $tokenUserId);
+        if ($tokenUser) {
+            $resetUserId = (int) $tokenUser['id'];
+            $resetEmail = (string) $tokenUser['email'];
+            $mode = 'token';
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!validateCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
+        $message = 'Invalid request. Please refresh the page and try again.';
+        $messageType = 'danger';
+    } elseif ($resetUserId === false) {
+        $message = 'This reset session is invalid or has expired. Please request a new code.';
+        $messageType = 'danger';
+    } elseif (($_POST['new_password'] ?? '') !== ($_POST['confirm_password'] ?? '')) {
+        $message = 'Passwords do not match.';
+        $messageType = 'warning';
+    } else {
+        $newPassword = (string) ($_POST['new_password'] ?? '');
+        $validation = validatePasswordEnhanced($conn, $resetUserId, $newPassword);
+        if (!$validation['valid']) {
+            $message = (string) $validation['msg'];
+            $messageType = 'warning';
+        } else {
+            $newHash = password_hash($newPassword, PASSWORD_DEFAULT);
+            $done = $mode === 'token'
+                ? completePasswordReset($conn, $token, $resetUserId, $newHash)
+                : completePasswordResetForUser($conn, $resetUserId, $newHash);
+
+            if ($done) {
+                clearPasswordResetFlow();
+                $message = 'Password reset successful! You can now log in with your new password.';
+                $messageType = 'success';
+                $resetUserId = false;
+                $mode = '';
+                $resetEmail = '';
+            } else {
+                $message = 'Something went wrong while updating your password. Please try again.';
+                $messageType = 'danger';
+            }
+        }
+    }
+} elseif ($resetUserId === false) {
+    $message = 'Your verification has expired or no code was verified. Please request a new code.';
+    $messageType = 'warning';
+}
+
+$canSubmit = ($resetUserId !== false);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -57,22 +108,23 @@ body{background:#ffffff;min-height:100vh;display:flex;justify-content:center;ali
 <body>
 <div class="rc"><div class="rh"><div class="ic"><i class="bi bi-shield-lock"></i></div><h5>Reset Your Password</h5><p>Choose a strong new password</p></div>
 <div class="rb">
-<?php if($message): ?><div class="alert alert-<?php echo $messageType; ?> alert-dismissible fade show" style="font-size:13px"><?php echo htmlspecialchars($message); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
-<?php if($validToken): ?>
+<?php if($message): ?><div class="alert alert-<?php echo htmlspecialchars($messageType); ?> alert-dismissible fade show" style="font-size:13px"><?php echo htmlspecialchars($message); ?><button type="button" class="btn-close" data-bs-dismiss="alert"></button></div><?php endif; ?>
+<?php if($canSubmit): ?>
+<?php if($resetEmail !== ''): ?><p class="text-muted" style="font-size:12.5px">Resetting the password for <strong><?php echo htmlspecialchars($resetEmail); ?></strong>.</p><?php endif; ?>
 <form method="POST" action="" id="rf">
 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken); ?>">
-<input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
+<?php if($mode === 'token'): ?><input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>"><?php endif; ?>
 <div class="mb-3"><label class="form-label" style="font-size:13px;color:#334155">New Password</label>
-<div class="input-group"><span class="input-group-text"><i class="bi bi-lock"></i></span><input type="password" class="form-control" id="np" name="new_password" required minlength="8"></div>
+<div class="input-group"><span class="input-group-text"><i class="bi bi-lock"></i></span><input type="password" class="form-control" id="np" name="new_password" required minlength="8" autocomplete="new-password"></div>
 <small class="text-muted">8+ chars, upper/lower, number, special char</small></div>
 <div class="mb-3"><label class="form-label" style="font-size:13px;color:#334155">Confirm Password</label>
-<div class="input-group"><span class="input-group-text"><i class="bi bi-lock-fill"></i></span><input type="password" class="form-control" id="cp" name="confirm_password" required minlength="8"></div></div>
+<div class="input-group"><span class="input-group-text"><i class="bi bi-lock-fill"></i></span><input type="password" class="form-control" id="cp" name="confirm_password" required minlength="8" autocomplete="new-password"></div></div>
 <button type="submit" class="btn br mb-3"><i class="bi bi-check-circle me-1"></i> Reset Password</button>
 </form>
 <?php elseif($messageType==='success'): ?>
 <div class="text-center"><a href="login.php" class="btn br"><i class="bi bi-box-arrow-in-right me-1"></i> Go to Login</a></div>
 <?php else: ?>
-<div class="text-center"><a href="forgot-password.php" class="btn br"><i class="bi bi-arrow-repeat me-1"></i> Request New Link</a></div>
+<div class="text-center"><a href="forgot-password.php" class="btn br"><i class="bi bi-arrow-repeat me-1"></i> Request New Code</a></div>
 <?php endif; ?>
 <div class="text-center mt-3"><a class="ml" href="login.php"><i class="bi bi-arrow-left me-1"></i> Back to Login</a></div>
 </div></div>

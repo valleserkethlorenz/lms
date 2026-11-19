@@ -160,13 +160,26 @@ function csrfToken(): string {
     return $_SESSION['csrf_token'];
 }
 
-function requireJsonCsrf(): void {
-    $submitted = (string)($_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
+/**
+ * Validate a submitted CSRF token against the session token.
+ */
+function validateCsrfToken(string $submitted): bool {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return false;
+    }
     $expected = $_SESSION['csrf_token'] ?? '';
     if (!is_string($expected) || $expected === '' || $submitted === '' || !hash_equals($expected, $submitted)) {
         if (class_exists('SecurityLogger')) {
-            SecurityLogger::csrfViolation('Invalid CSRF token submitted for JSON request');
+            SecurityLogger::csrfViolation('Invalid CSRF token submitted');
         }
+        return false;
+    }
+    return true;
+}
+
+function requireJsonCsrf(): void {
+    $submitted = (string)($_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
+    if (!validateCsrfToken($submitted)) {
         http_response_code(419);
         header('Content-Type: application/json');
         echo json_encode(['status'=>419, 'msg'=>'Your form session expired. Refresh the page and try again.']);

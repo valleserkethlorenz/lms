@@ -96,11 +96,19 @@ function maskVerificationEmail(string $email): string
  *
  * @return array{allowed:bool,retry_after:int,reason:string}
  */
-function canSendVerificationCode(mysqli $conn, string $email, ?int $now = null): array
+function canSendVerificationCode(
+    mysqli $conn,
+    string $email,
+    ?int $now = null,
+    int $cooldown = EMAIL_VERIFICATION_RESEND_COOLDOWN,
+    int $rateLimit = EMAIL_VERIFICATION_RATE_LIMIT
+): array
 {
     ensureEmailVerificationTable($conn);
     $email = normalizeVerificationEmail($email);
     $now = $now ?? time();
+    $cooldown = max(0, $cooldown);
+    $rateLimit = max(1, $rateLimit);
 
     $stmt = $conn->prepare(
         "SELECT created_at FROM tbl_email_verification WHERE email = ? ORDER BY id DESC LIMIT 1"
@@ -113,7 +121,7 @@ function canSendVerificationCode(mysqli $conn, string $email, ?int $now = null):
     if ($last && !empty($last['created_at'])) {
         $lastTs = strtotime((string) $last['created_at']);
         if ($lastTs !== false) {
-            $retry = ($lastTs + EMAIL_VERIFICATION_RESEND_COOLDOWN) - $now;
+            $retry = ($lastTs + $cooldown) - $now;
             if ($retry > 0) {
                 return ['allowed' => false, 'retry_after' => $retry, 'reason' => 'cooldown'];
             }
@@ -131,7 +139,7 @@ function canSendVerificationCode(mysqli $conn, string $email, ?int $now = null):
     $window = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
-    if ((int) ($window['cnt'] ?? 0) >= EMAIL_VERIFICATION_RATE_LIMIT) {
+    if ((int) ($window['cnt'] ?? 0) >= $rateLimit) {
         $oldestTs = strtotime((string) ($window['oldest'] ?? ''));
         $retry = $oldestTs !== false ? max(1, ($oldestTs + 3600) - $now) : 3600;
         return ['allowed' => false, 'retry_after' => $retry, 'reason' => 'rate_limit'];
@@ -145,14 +153,15 @@ function canSendVerificationCode(mysqli $conn, string $email, ?int $now = null):
  *
  * @return array{ok:bool,id?:int,code?:string,expires_in?:int,error?:string}
  */
-function createEmailVerification(mysqli $conn, string $email, string $ip = '', string $ua = ''): array
+function createEmailVerification(mysqli $conn, string $email, string $ip = '', string $ua = '', int $expiresIn = EMAIL_VERIFICATION_EXPIRY): array
 {
     ensureEmailVerificationTable($conn);
     $email = normalizeVerificationEmail($email);
 
+    $expiresIn = max(60, $expiresIn);
     $code = generateVerificationCode();
     $hash = password_hash($code, PASSWORD_DEFAULT);
-    $expiresAt = date('Y-m-d H:i:s', time() + EMAIL_VERIFICATION_EXPIRY);
+    $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
     $ip = substr($ip, 0, 45);
     $ua = mb_substr($ua, 0, 500);
 
@@ -180,7 +189,7 @@ function createEmailVerification(mysqli $conn, string $email, string $ip = '', s
         'ok'         => true,
         'id'         => $id,
         'code'       => $code,
-        'expires_in' => EMAIL_VERIFICATION_EXPIRY,
+        'expires_in' => $expiresIn,
     ];
 }
 
@@ -189,11 +198,12 @@ function createEmailVerification(mysqli $conn, string $email, string $ip = '', s
  *
  * @return array{ok:bool,msg:string,reason:string,remaining_attempts?:int}
  */
-function verifyEmailVerificationCode(mysqli $conn, string $email, string $code): array
+function verifyEmailVerificationCode(mysqli $conn, string $email, string $code, int $maxAttempts = EMAIL_VERIFICATION_MAX_ATTEMPTS): array
 {
     ensureEmailVerificationTable($conn);
     $email = normalizeVerificationEmail($email);
     $code = preg_replace('/\D/', '', $code);
+    $maxAttempts = max(1, $maxAttempts);
 
     $stmt = $conn->prepare(
         "SELECT id, code_hash, expires_at, attempts
@@ -221,7 +231,7 @@ function verifyEmailVerificationCode(mysqli $conn, string $email, string $code):
     }
 
     $attempts = (int) $row['attempts'];
-    if ($attempts >= EMAIL_VERIFICATION_MAX_ATTEMPTS) {
+    if ($attempts >= $maxAttempts) {
         $burn = $conn->prepare("UPDATE tbl_email_verification SET consumed = 1 WHERE id = ?");
         $burn->bind_param('i', $rowId);
         $burn->execute();
@@ -231,7 +241,7 @@ function verifyEmailVerificationCode(mysqli $conn, string $email, string $code):
 
     if (!password_verify($code, (string) $row['code_hash'])) {
         $attempts++;
-        if ($attempts >= EMAIL_VERIFICATION_MAX_ATTEMPTS) {
+        if ($attempts >= $maxAttempts) {
             $upd = $conn->prepare("UPDATE tbl_email_verification SET attempts = ?, consumed = 1 WHERE id = ?");
             $upd->bind_param('ii', $attempts, $rowId);
             $upd->execute();
@@ -246,7 +256,7 @@ function verifyEmailVerificationCode(mysqli $conn, string $email, string $code):
             'ok'                 => false,
             'msg'                => 'That code is incorrect. Please check it and try again.',
             'reason'             => 'invalid',
-            'remaining_attempts' => max(0, EMAIL_VERIFICATION_MAX_ATTEMPTS - $attempts),
+            'remaining_attempts' => max(0, $maxAttempts - $attempts),
         ];
     }
 
